@@ -22,10 +22,6 @@ thousand_digit = ("73167176531330624919225119674426574742355349194934"
 size = 5
 
 def max_number( integer ):
-    running_max = 0
-    for substring in range(0, len(str(integer))+1-size):
-        if( int(str(integer)[substring:substring+size]) > running_max ): running_max = int(str(integer)[substring:substring+size])
-    return running_max
+    return max([int(str(integer)[substring:substring+size]) for substring in range(0, len(str(integer))+1-size)])
 
 print(max_number(thousand_digit))
-print("Greatest-valued substring of length ", size, "found at index ", substring)
