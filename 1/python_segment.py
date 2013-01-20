@@ -21,7 +21,13 @@ thousand_digit = ("73167176531330624919225119674426574742355349194934"
                   "71636269561882670428252483600823257530420752963450")
 size = 5
 
-def max_number( integer ):
+
+def max_number(integer):
     return max([int(str(integer)[substring:substring+size]) for substring in range(0, len(str(integer))+1-size)])
 
-print(max_number(thousand_digit))
+
+def main():
+    print(max_number(thousand_digit))
+
+if __name__ == "__main__":
+    main()
