@@ -1,0 +1,180 @@
+\documentclass[12pt,letterpaper]{article}
+
+\author{Jordan Bayles}
+\title{Assignment 1: Written Portion}
+\date{Monday, 21 January, 2013}
+
+%%Usepackage declarations
+\usepackage[left=1in,top=1in,right=1in,bottom=1in]{geometry}
+\usepackage{lastpage}
+\usepackage{sectsty}
+\usepackage{slashed}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{latexsym}
+% Include for easy import of full pdf pages
+\usepackage{pdfpages}
+% Include for use of images
+\usepackage{graphicx}
+% Include for use of [H] placement specifier
+\usepackage{float}
+% Include for use of \toprule, \midrule, \bottomrule in tabular env.
+\usepackage{booktabs}
+% Include for setting spacing between lines
+\usepackage{setspace}
+% Code listing packages
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{color}
+\usepackage[font=small,format=plain,labelfont=bf,up,textfont=it,up]{caption}
+
+%% Package usages
+\sectionfont{\normalsize}
+\subsectionfont{\small}
+
+%% New commands
+\newcommand{\comment}[1]{}
+\newcommand{\field}[1]{\mathbb{#1}} % requires amsfonts
+\newcommand{\script}[1]{\mathcal{#1}} % requires amsfonts
+\newcommand{\pd}[2]{\frac{\partial#1}{\partial#2}}
+
+%% Access document variables
+\makeatletter
+\let\thetitle\@title
+\let\theauthor\@author
+\let\thedate\@date
+\makeatother
+
+%% Color Definitions
+\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{gray}{rgb}{0.5,0.5,0.5}
+\definecolor{mauve}{rgb}{0.58,0,0.82}
+\definecolor{lightgrey}{gray}{0.8}
+\definecolor{darkgrey}{gray}{1.6}
+
+%% Code Listing Configuration
+\DeclareCaptionFormat{listing}{\colorbox{gray}{\parbox{0.987\linewidth}{#1#2#3}}}
+\captionsetup[lstlisting]{format=listing, labelfont=white, indention=0pt, textfont=white, margin=0pt, font={bf,footnotesize}, singlelinecheck=false}
+\DeclareCaptionFont{white}{\color{white}}
+\renewcommand{\lstlistingname}{Code}
+\lstset{ %
+  %Some lang opts: C++, C, Java, Python, Matlab, TeX, HTML, SQL, Verilog, VHDL, make, ...
+  basicstyle=\footnotesize\ttfamily , % the size of the fonts that are used for the code
+  numbers=left,                       % where to put the line-numbers
+  numberstyle=\scriptsize\color{darkgray}, % the style that is used for the line-numbers
+  stepnumber=2,                       % the step between two line-numbers. 
+  numbersep=5pt,                      % how far the line-numbers are from the code
+  backgroundcolor=\color{white},      % choose the background color. You must add \usepackage{color}
+  showspaces=false,                   % show spaces adding particular underscores
+  showstringspaces=false,             % underline spaces within strings
+  showtabs=false,                     % show tabs within strings adding particular underscores
+  frame=tb,                           % adds a frame around the code
+  rulesepcolor=\color{gray},          % if not set, the frame-color may be changed on line-breaks within not-black text (e.g. commens (green here))
+  tabsize=2,                          % sets default tabsize to 2 spaces
+  captionpos=t,                       % sets the caption-position
+  breaklines=true,                    % sets automatic line breaking
+  breakatwhitespace=false,            % sets if automatic breaks should only happen at whitespace
+  title=\lstname,                     % show the filename of files included with \lstinputlisting;
+  keywordstyle=\color{blue},          % keyword style
+  commentstyle=\color{dkgreen},       % comment style
+  stringstyle=\color{mauve},          % string literal style
+  escapeinside={\%*}{*)},             % if you want to add a comment within your code
+  morekeywords={*,...}                % if you want to add more keywords to the set
+  framexbottommargin=5pt,
+}
+
+\begin{document}
+\begin{flushright}
+\theauthor\\
+\thedate
+\end{flushright}
+\begin{center}
+\thetitle
+\end{center}
+% Include a full PDF:
+% \includepdf[pages=-]{written_portion.pdf}
+% Or for a separate file:
+%\lstinputlisting[language=Python]{source_filename.py}
+
+\section*{Problem 1}
+There are many ways to transfer files between a local client and remote server,
+and the one that you select depends on the capabilities of the server. Some
+common protocols include
+SFTP (SSH file transfer protocol), rsync, AFP (Apple Filing Protocol), which
+each have their respective strengths, such as ease of use and security.
+
+\section*{Problem 2}
+Revision controls systems are primarily a method for tracking changes to
+a software project over time. Some common implementations include Git and
+Mercurial SCM. Some of the most common uses include controlling who has
+access to canon code ("Blessed repository" in Git lingo), "branching" off
+the main code in order to develop a new feature, and determining when bugs
+were added to the code base (and by who, such as using \verb!git blame!).
+
+\section*{Problem 3}
+Redirection is defined as switching a standard stream of data to either a
+non-default destination or source. Typically in UNIX systems, the redirection
+symbols $\langle$ and $\rangle$ are used to redirect process streams to
+or from a file. Piping is actually a special case of redirection, and is the
+act of chaining process input and output by using the \verb!|! symbol.
+
+\section*{Problem 4}
+Make is a software utility that uses a special filetype known as a ``Makefile''
+to turn source code into either program executables or libraries. Although for
+some languages the compiler can perform this task and many IDEs (such as
+Visual Studio) as well, make is still widespread in use, especially in UNIX
+derived systems. Some of the primary advantages of using make include that it
+is lightweight and included on many Linux and BSD distributions by default (or
+is easy to add), thus programs that depend on make are easy to compile and use.
+Make is also excellent for development, because it can partially rebuild a program
+when only some of its source files have been edited and make can do more than create
+packages: it can install/remove them, clean object files, and generate tag
+tables for them, among other things.
+
+\section*{Problem 5}
+The makefile is general broken into two portions: macros and rules.
+\lstset{caption={Sample macros},label=macro,language=make}
+\begin{lstlisting}
+PACKAGE         = package_name
+CC              = icc
+\end{lstlisting}
+\emph{Macros} are similar to the C \verb!#define! instruction, and are used to contain
+constants such as the compiler name, program version and name, as well as flags
+for programs called in the program.
+\lstset{caption={Sample rule},label=rule,language=make}
+\begin{lstlisting}
+all:
+        echo "Do nothing by default"
+        echo "Try 'make target'"
+\end{lstlisting}
+\emph{Rules}, by comparison, are a set of instructions that are used to
+build a \emph{target} such as ``release'' or ``debug.'' A rule contains all of the
+information required to complete a certain task, and can include any command
+supported by the operating system, allowing you to perform nearly any task. In
+practice, make is typically called with a rule supplied (the above rule
+would be run with the command \verb~make all~, for example).
+
+\section*{Problem 6}
+\lstset{caption={Find rule},label=find,language=bash}
+\begin{lstlisting}
+find . -type f -exec file '{}' \;
+\end{lstlisting}
+
+Sample output:
+\lstset{caption={Sample find output},label=out,language=bash}
+\begin{lstlisting}
+jordan@fenrir /home/jordan/Dropbox/schoolwork/cs311/1  (master)
+-> find . -type f -exec file '{}' \;
+./latex_segment.aux: LaTeX table of contents, 
+./python_segment.py: Python script, ASCII text executable
+./latex_segment.pdf: PDF document, version 1.5
+./latex_segment.log: ASCII text
+./c_segment.c: C source, ASCII text
+./names.txt: ASCII text, with very long lines
+./latex_segment.tex: LaTeX 2e document, ASCII text
+./words.txt: ASCII text, with very long lines, with no line terminators
+\end{lstlisting}
+
+\section*{Problem 7: Sieve of Eratosthenes}
+\lstinputlisting[caption={Sieve implementation},language=C]{c_segment.c}
+\end{document}

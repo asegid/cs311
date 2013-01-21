@@ -29,30 +29,36 @@ thousand_digit = ("73167176531330624919225119674426574742355349194934"
                   "71636269561882670428252483600823257530420752963450")
 
 # Getopt related constants
-short_cmd="h1t:c:234"
-long_cmd=("help", "part1", "term=term", "course=course",
-                  "part2", "part3", "part4")
+short_cmd = "h1t:c:234"
+long_cmd = ("help", "part1", "term=term", "course=course",
+                    "part2", "part3", "part4")
 
 # Note that this may not work for unicode
 ascii_offset = 64
 
+
 # Functions
 def create_dir(path):
+    """Create a directory at path"""
     try:
         os.makedirs(path)
     except:
         print("Directory '", path, "' already exists or could not be created")
 
+
 def create_sym(source, link_name):
+    """Create a symbolic link from link_path to source"""
     try:
         os.symlink(source, link_name)
     except:
         print("Exception occurred symlinking ", link_name, " to ", source)
 
+
 def part_one(term, course):
-    dirs=("assignments", "examples", "exams", "lecture_notes", "submissions")
-    symlink_root="/usr/local/classes/eecs/"
-    symlink_dirs=(("public_html", "website"), ("handin", "handin"))
+    """Create directories and symlinks for term/course/"""
+    dirs = ("assignments", "examples", "exams", "lecture_notes", "submissions")
+    symlink_root = "/usr/local/classes/eecs/"
+    symlink_dirs = (("public_html", "website"), ("handin", "handin"))
 
     root = os.getcwd()
 
@@ -68,10 +74,14 @@ def part_one(term, course):
         source_path = os.path.join(symlink_root, term, course, source_name)
         create_sym(source_path, link_path)
 
+
 def part_two(integer, size):
+    """Find the maximum subarray of size "size" in integer"""
     return(max([integer[i:i+size] for i in range(0, len(integer)-size+1)]))
 
+
 def collect_words(names_file):
+    """Collect CSV as words from names_file"""
     try:
         with open(names_file, 'r') as names:
             # Assume all names are on one line
@@ -81,8 +91,10 @@ def collect_words(names_file):
     except:
         return(0)
 
+
 def word_score(word_list):
-    word_scores=[]
+    """Find the individual word scores for words in a list"""
+    word_scores = []
     for word in word_list:
         score = 0
         for letter in word:
@@ -90,10 +102,14 @@ def word_score(word_list):
         word_scores.append(score)
     return(word_scores)
 
-def word_score_pos(word_scores):
-    return([(idx+1)*word_scores[idx] for idx in range(0,len(word_scores))])
+
+def word_score_pos(scores):
+    """Find the word position score for each index in word_scores"""
+    return([(idx + 1) * scores[idx] for idx in range(0, len(scores))])
+
 
 def part_three(names_file):
+    """Find the total word score from names_file"""
     # Open and initialize names file
     names = collect_words(names_file)
     # Sort names alphabetically
@@ -103,16 +119,20 @@ def part_three(names_file):
     # Sum name scores
     return(sum(score))
 
+
 def gen_tri_sequence(cap):
+    """Generate the triangle sequence up to the integer value cap"""
     # Generate triangle numbers
-    idx=0
-    value=0
-    tri_sequence=[]
+    idx = 0
+    value = 0
+    tri_sequence = []
+
     while(value < cap):
-        value=(1/2)*idx*(idx+1)
+        value = (1 / 2) * idx * (idx + 1)
         tri_sequence.append(value)
-        idx+=1
+        idx += 1
     return(tri_sequence)
+
 
 def find_num_triangles(words):
     """Finds the total number of triangle words in words"""
@@ -131,11 +151,15 @@ def find_num_triangles(words):
             triangle_numbers.append(words[idx])
     return(len(triangle_numbers))
 
+
 def part_four(words_file):
+    """Find the number of triangle words in words_file"""
     words = collect_words(words_file)
     return(find_num_triangles(words))
 
+
 def usage():
+    """How to use this program"""
     print("Usage\nShort Commands")
     for idx in range(len(short_cmd)):
         if re.match("[a-zA-Z0-9]", short_cmd[idx]):
@@ -149,7 +173,9 @@ def usage():
     for cmd in long_cmd:
         print(cmd)
 
+
 def main():
+    """Main entry point for assignment 1. Parses command line options"""
     # Getopt configuration
     try:
         opts, args = getopt.getopt(sys.argv[1:], short_cmd, long_cmd)
@@ -176,7 +202,7 @@ def main():
                         term = arg
                 part_one(term, course)
             except:
-                    print("Missing argument. Course (-c) and term (-t) required")
+                    print("Missing arg. Course (-c) and term (-t) required")
         elif opt in ("-2", "--part2"):
             print(part_two(thousand_digit, 5))
         elif opt in ("-3", "--part3"):
