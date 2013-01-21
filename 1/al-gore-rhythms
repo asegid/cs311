@@ -1,0 +1,6 @@
+
+problem 2:
+
+return( max( subarray_size_five for subarray_size_five in number ) )
+
+
