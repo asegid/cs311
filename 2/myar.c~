@@ -1,0 +1,84 @@
+/*
+ *      Author:  Jordan Bayles (baylesj), baylesj@engr.orst.edu
+ *     Created:  01/27/2013 07:44:06 PM
+ *    Filename:  myar.c
+ *
+ * Description:  Implementation of UNIX archive "ar" utility
+ */
+
+#include <ar.h>
+#include <assert.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+// use lstat instead of stat!
+// almost all code for this project is in textbook
+// 71 while numRead read read section is helpful
+
+struct ar_hdr * get_headers (FILE archive)
+{
+
+}
+
+struct stat * get_stats (struct ar_hdr *headers)
+{
+
+}
+
+bool add_file (FILE archive, struct ar_hdr header, char *contents)
+{
+
+}
+
+bool delete_file (FILE archive, struct ar_hdr header)
+{
+
+}
+
+bool extract_file (FILE archive, struct ar_hdr header)
+{
+
+}
+
+int main(int argc, char **argv)
+{
+	/* Syntax "myar key afile name ..." where afile=archive, key=opt*/
+	assert (argc >= 3);
+	assert (strlen (argv[1]) == 2);
+
+	assert (argv[1][0] == '-');
+	char key = argv[1][1];
+
+	switch (key)
+	{
+	case 'q': // quickly append named files to archive
+
+		break;
+	case 'x': // extract named files
+
+		break;
+	case 't': // print a concise table of contents of archive
+
+		break;
+	case 'v': // print a verbose table of contents of archive
+
+		break;
+	case 'd': // delete named files from archive
+
+		break;
+	case 'A': // quickly append all "regular" files in the current dir
+
+		break;
+	case 'w': // for a timeout, add all modified files to the archive
+
+		break;
+	default: // unsupported operation
+
+		break;
+		}
+
+	printf("size of struct ar_hdr: %li", sizeof(struct ar_hdr));
+
+}
