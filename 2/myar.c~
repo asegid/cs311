@@ -6,79 +6,166 @@
  * Description:  Implementation of UNIX archive "ar" utility
  */
 
-#include <ar.h>
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include <ar.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 // use lstat instead of stat!
 // almost all code for this project is in textbook
 // 71 while numRead read read section is helpful
 
-struct ar_hdr * get_headers (FILE archive)
+// must be run before get_next_header
+bool check_file(int fd)
 {
+	char buf[SARMAG];
 
+	read(fd, buf, SARMAG);
+	assert(strncmp(buf, ARMAG, sizeof(buf)) == 0);
+
+	return (true);
 }
 
-struct stat * get_stats (struct ar_hdr *headers)
+void clean_filename(char *filename)
 {
-
+	for (int i = 0; i < sizeof(filename); ++i) {
+		/* Only character of concern is '/'... NUL is end of string */
+		if (filename[i]  == '/') {
+			filename[i] = '\0';
+		}
+	}
 }
 
-bool add_file (FILE archive, struct ar_hdr header, char *contents)
+// assumes file offset only edited by self and check_file()
+// pass in header to get, output offset of contents
+off_t get_next_header(int fd, struct ar_hdr * out)
 {
+	char buf[sizeof(struct ar_hdr)];
+	ssize_t was_read;
+	off_t content_offset;
 
+	/* Read and make sure we got everything */
+	was_read = read(fd, buf, sizeof(struct ar_hdr));
+	if (was_read == (sizeof(struct ar_hdr))) {
+
+		/* Try filling the struct with a cast */
+		//*out = (struct ar_hdr) buf;
+		memcpy(out, buf, sizeof(*out));
+		clean_filename(out->ar_name);
+
+		/* Record content offset in case we care */
+		content_offset = lseek(fd, 0, SEEK_CUR);
+
+		/* Advance past content */
+		lseek(fd, atoi(out->ar_size) + 1, SEEK_CUR);
+
+	} else {
+		content_offset = (off_t) (-1);
+	}
+
+	return (content_offset);
 }
 
-bool delete_file (FILE archive, struct ar_hdr header)
+struct stat *get_stats(struct ar_hdr *hdr)
 {
-
+	struct stat *hdr_stat = malloc(sizeof(struct stat));
+	assert(lstat(hdr->ar_name, hdr_stat) == 0);
+	return (hdr_stat);
 }
 
-bool extract_file (FILE archive, struct ar_hdr header)
+bool add_file(int fd, struct ar_hdr * hdr, char *contents)
 {
 
+	return (true);
+}
+
+bool delete_file(int fd, struct ar_hdr * hdr)
+{
+
+	return (true);
+}
+
+bool extract_file(int fd, struct ar_hdr * hdr)
+{
+
+	return (true);
+}
+
+bool print_concise(int fd)
+{
+	struct ar_hdr *tmp = malloc(sizeof(struct ar_hdr));
+
+	if (check_file(fd)) {
+		while (get_next_header(fd, tmp) != -1) {
+			//printf ("-%s-", (char *)tmp);
+			printf("%.*s", (int)(sizeof(tmp->ar_name)), tmp->ar_name);
+		}
+	}
+	free(tmp);
+
+	return (true);
+}
+
+bool print_verbose(int fd)
+{
+
+	return (true);
 }
 
 int main(int argc, char **argv)
 {
-	/* Syntax "myar key afile name ..." where afile=archive, key=opt*/
-	assert (argc >= 3);
-	assert (strlen (argv[1]) == 2);
+	char *archive;
+	int fd;
+	char key;
 
-	assert (argv[1][0] == '-');
-	char key = argv[1][1];
+	/* Syntax "myar key afile name ..." where afile=archive, key=opt */
+	assert(argc >= 3);
+	assert(strlen(argv[1]) == 2);
 
-	switch (key)
-	{
-	case 'q': // quickly append named files to archive
+	assert(argv[1][0] == '-');
 
-		break;
-	case 'x': // extract named files
+	/* operation key */
+	key = argv[1][1];
 
-		break;
-	case 't': // print a concise table of contents of archive
+	/* archive should be second argument */
+	archive = argv[2];
 
-		break;
-	case 'v': // print a verbose table of contents of archive
+	/* open archive */
+	fd = open(archive, O_RDWR);
 
-		break;
-	case 'd': // delete named files from archive
-
-		break;
-	case 'A': // quickly append all "regular" files in the current dir
+	switch (key) {
+	case 'q':		// quickly append named files to archive
 
 		break;
-	case 'w': // for a timeout, add all modified files to the archive
+	case 'x':		// extract named files
 
 		break;
-	default: // unsupported operation
+	case 't':		// print a concise table of contents of archive
+		print_concise(fd);
+		break;
+	case 'v':		// print a verbose table of contents of archive
+		print_verbose(fd);
+		break;
+	case 'd':		// delete named files from archive
 
 		break;
-		}
+	case 'A':		// quickly append all "regular" files in the current dir
 
-	printf("size of struct ar_hdr: %li", sizeof(struct ar_hdr));
+		break;
+	case 'w':		// for a timeout, add all modified files to the archive
 
+		break;
+	default:		// unsupported operation
+
+		break;
+	}
+
+	return (EXIT_SUCCESS);
 }
