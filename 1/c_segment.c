@@ -30,14 +30,18 @@ struct primes sieve_eratosthenes(long n)
 	long multiple;
 	struct primes results;
 
+	/* Mark 0 as composite, anything multiplied by zero is zero */
+	candidates[0] = SPECIAL;
+
 	/* Mark 1 as special */
 	candidates[1] = SPECIAL;
-
+	
 	/* Set count to all (excepting 0,1), decrement as we go! */
 	count = n - 2;
 
 	/* Set k=1. While k < sqrt(n)... */
 	k = 1;
+	// optimize by not calculating k^2 in while loop
 	while (k * k < n) {
 		m = k + 1;
 		/* Find first # greater than k not IDed as composite */

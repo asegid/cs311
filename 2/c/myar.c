@@ -7,6 +7,7 @@
  */
 
 #include <assert.h>
+#include <ctype.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,7 +20,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define STR_SIZE sizeof("rwxrwxrwx")
+#define PERM_SIZE sizeof("rwxrwxrwx")
+#define MAX_STR_SIZE 255
 #define TIME_SIZE 26
 #define EPOCH_SIZE 10
 
@@ -38,19 +40,26 @@ bool check_file(int fd)
 	return (true);
 }
 
-void clean_filename(char *filename)
+// strip trailing whitespace, if backslash then turn into valid filename
+char *format_string(char *str, int len, bool backslash)
 {
-	for (int i = 0; i < sizeof(filename); ++i) {
-		/* Only character of concern is '/'... NUL is end of string */
-		if (filename[i] == '/') {
-			filename[i] = '\0';
-		}
+	int idx = len - 1;
+	static char ret[MAX_STR_SIZE];
+
+	// strip trailing whitespace (and backspaces if enabled)
+	while (isspace(str[idx]) || (backslash && (str[idx] == '/'))) {
+		--idx;
 	}
+	strncpy(ret, str, idx + 1);
+	// null terminate after valid, buffer could have other crap in it
+	ret[idx + 1] = '\0';
+
+	return (ret);
 }
 
 // assumes file offset only edited by self and check_file()
 // pass in header to get, output offset of contents
-off_t get_next_header(int fd, struct ar_hdr *out)
+off_t get_next_header(int fd, struct ar_hdr * out)
 {
 	char buf[sizeof(struct ar_hdr)];
 	ssize_t was_read;
@@ -62,7 +71,6 @@ off_t get_next_header(int fd, struct ar_hdr *out)
 
 		/* Try filling the struct with a cast */
 		memcpy(out, buf, sizeof(*out));
-		clean_filename(out->ar_name);
 
 		/* Record content offset in case we care */
 		content_offset = lseek(fd, 0, SEEK_CUR);
@@ -101,35 +109,35 @@ bool extract_file(int fd, struct ar_hdr * hdr)
 	return (true);
 }
 
-char * format_time(char *epoch)
+char *format_time(char *epoch)
 {
 	time_t systime;
-	char *formatted = malloc(TIME_SIZE);
+	static char formatted[TIME_SIZE];
+
 	systime = atoll(epoch);
-	strncpy (formatted, ctime(&systime), TIME_SIZE);
-	/* remove the newline character from the end of the time string */
-	formatted[strlen(formatted)-1] = '\0';
+	strftime(formatted, TIME_SIZE, "%b %d %R %Y", localtime(&systime));
 
-	return(formatted);
-
+	return (formatted);
 }
 
-void format_permissions(char *octal, char *formatted)
+char *format_permissions(char *octal)
 {
 // layout assumption (setuid)(setgid)(sticky bit)(U)(G)(O)
-mode_t perm = strtol (octal, NULL, 8);
-snprintf(formatted, STR_SIZE, "%c%c%c%c%c%c%c%c%c",
-		((perm & S_IRUSR) ? 'r' : '-'),
-		((perm & S_IWUSR) ? 'w' : '-'),
-		((perm & S_IXUSR) ? 'x' : '-'),
+	static char ret[PERM_SIZE];
 
-		((perm & S_IRGRP) ? 'r' : '-'),
-		((perm & S_IWGRP) ? 'w' : '-'),
-		((perm & S_IXGRP) ? 'x' : '-'),
+	mode_t perm = strtol(octal, NULL, 8);
+	snprintf(ret, PERM_SIZE, "%c%c%c%c%c%c%c%c%c",
+		 ((perm & S_IRUSR) ? 'r' : '-'),
+		 ((perm & S_IWUSR) ? 'w' : '-'),
+		 ((perm & S_IXUSR) ? 'x' : '-'),
+		 ((perm & S_IRGRP) ? 'r' : '-'),
+		 ((perm & S_IWGRP) ? 'w' : '-'),
+		 ((perm & S_IXGRP) ? 'x' : '-'),
+		 ((perm & S_IROTH) ? 'r' : '-'),
+		 ((perm & S_IWOTH) ? 'w' : '-'),
+		 ((perm & S_IXOTH) ? 'x' : '-'));
 
-		((perm & S_IROTH) ? 'r' : '-'),
-		((perm & S_IWOTH) ? 'w' : '-'),
-		((perm & S_IXOTH) ? 'x' : '-'));
+	return (ret);
 }
 
 bool print_archive(int fd, bool verbose)
@@ -142,28 +150,34 @@ bool print_archive(int fd, bool verbose)
 
 	while (get_next_header(fd, tmp) != -1) {
 		if (verbose) {
-			char *formatted_time;
-			char permissions[STR_SIZE];
-
 			// permissions
-			format_permissions(tmp->ar_mode, permissions);
-			printf("%s", permissions);
+			printf("%s ", format_permissions(tmp->ar_mode));
 
-			// uid/gid ?
-			printf("%.*s %.*s ",
-				(int) (sizeof(tmp->ar_uid)), tmp->ar_uid,
-				(int) (sizeof(tmp->ar_gid)), tmp->ar_gid);
+			// uid
+			printf("%s/", format_string(tmp->ar_uid,
+						    sizeof(tmp->ar_uid),
+						    false));
+
+			//gid
+			printf("%s     ", format_string(tmp->ar_gid,
+							sizeof(tmp->
+							       ar_gid),
+							false));
+
+			// file size in bytes
+			printf("%s ", format_string(tmp->ar_size,
+						    sizeof(tmp->ar_size),
+						    false));
 
 			// time
-			formatted_time = format_time(tmp->ar_date);
-			printf("%s ", formatted_time);
-			free(formatted_time);
+			printf("%s ", format_time(tmp->ar_date));
 		}
 		//printf ("-%s-", (char *)tmp);
-		printf("%.*s\n", (int) (sizeof(tmp->ar_name)), tmp->ar_name);
+		printf("%s\n", format_string(tmp->ar_name,
+					     sizeof(tmp->ar_name), true));
 		memset(tmp, 0, sizeof(tmp));
 	}
-	//free(tmp);
+	free(tmp);
 
 	return (true);
 }
