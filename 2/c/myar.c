@@ -8,6 +8,7 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,6 +68,23 @@ off_t get_next_header(int fd, struct ar_hdr * out)
 	return (offset);
 }
 
+// strip trailing whitespace, if backslash then turn into valid fname
+char *fix_str(char *str, int len, bool backslash)
+{
+	int idx = len - 1;
+	static char ret[MAX_STR_SIZE];
+
+	// strip trailing whitespace (and backspaces if enabled)
+	while (isspace(str[idx]) || (backslash && (str[idx] == '/'))) {
+		--idx;
+	}
+	strncpy(ret, str, idx + 1);
+	// null terminate after valid, buffer could have other crap in it
+	ret[idx + 1] = '\0';
+
+	return (ret);
+}
+
 struct stat *get_stats(struct ar_hdr *hdr)
 {
 	struct stat *hdr_stat = malloc(sizeof(struct stat));
@@ -74,7 +92,7 @@ struct stat *get_stats(struct ar_hdr *hdr)
 	return (hdr_stat);
 }
 
-int create_archive(char *name)
+int create_archive(char *fname)
 {
 	int fd = open(fname, O_RDWR);
 
@@ -84,73 +102,84 @@ int create_archive(char *name)
 	return (fd);
 }
 
-off_t find_header(int fd, struct ar_hdr *out, char *fname)
+off_t find_header(int fd, char *fname, struct ar_hdr *out)
 {
 	off_t hdr_offset;
 
 	do {
 		hdr_offset = get_next_header (fd, out);
+		if (hdr_offset == -1) {
+			return (-1);
+		}
 	} while (strcmp (fix_str(out->ar_name, sizeof(out->ar_name), true),
 	                 fname) != 0);
 
 	return (hdr_offset);
 }
 
-bool add_file(int fd, struct ar_hdr * hdr, char *contents)
+bool add_file(int fd, char *fname)
 {
+	// seek to end of archive
+
+	// generate header, add to archive
+
+	// copy contents
+
+	return (true);
+}
+
+bool delete_bytes(int fd, off_t start, off_t end)
+{
+	char buf[BLOCK_SIZE];
+	off_t size = end - start;
+	off_t cur;
+	ssize_t num_read;
+
+	if ((size <= 0) || (fd < 0)) {
+		return (false);
+	}
+	/* set file offset to end of file to delete */
+	lseek (fd, end, SEEK_SET);
+	while ((num_read = read(fd, buf, BLOCK_SIZE)) > 0) {
+		cur = lseek (fd, 0, SEEK_CUR);
+		/* jump back num_read to over write */
+		lseek (fd, cur - num_read - size, SEEK_SET);
+		/* if failure to write, archive may be broken */
+		if (write (fd, buf, num_read) != num_read) {
+			return(false);
+		}
+		/* jump forward to read again */
+		lseek (fd, cur + size, SEEK_SET);
+	}
+	/* truncate archive */
+	ftruncate (fd, lseek(fd, 0, SEEK_CUR));
 
 	return (true);
 }
 
 bool delete_file(int fd, char *fname)
 {
-	char buf[BLOCK_SIZE];
-	int tmp_fd;
-	int read_size;
 	off_t file_start;
 	off_t file_end;
-	off_t cur_offset;
-	ssize_t num_read;
 	struct ar_hdr *tmp;
 
-	// Find offset, size of file to delete
 	tmp = malloc (sizeof (struct ar_hdr));
 	file_start = find_header(fd, fname, tmp);
-	file_end = file_offset + (off_t) (tmp->ar_size);
-	// create a new archive
-	tmp_fd = open(TMP_ARCHIVE_NAME, O_RDWR);
-	// set old file offset to beginning
-	lseek (fd, 0, SEEK_SET);
-	// copy all contents outside invalid offset range
-	while(1) {
-		read_size = BLOCK_SIZE;
-		cur_offset = lseek (fd, 0, SEEK_CUR);
-		/* Skip over contents if in them */
-		if ((file_start < cur_offset) && (cur_offset < file_end)) {
-			lseek (fd, file_end, SEEK_SET);
-		}
-		/* crop offset if it goes over */
-		if ((cur_offset + BLOCK_SIZE) > file_start) {
-			read_size = file_start - cur_offset;
-		}
-		/* break before write if read failed */
-		if ((num_read = read(fd, buf, read_size)) <= 0) {
-			break;
-		}
-		/* if failure to write, archive may be broken */
-		if (write (tmp_fd, buf, num_read) != num_read) {
-			return(false);
-		}
+	if (file_start < 0) {
+		return (false);
 	}
-	// delete old archive
-	// rename archive to new name
+	file_end = file_start + (off_t) (tmp->ar_size);
 
-	return (true);
+	return (delete_bytes (fd, file_start, file_end));
 }
 
 bool extract_file(int fd, char *fname)
 {
-
+    // get file header from archive
+    // create new file with proper name
+    // change new file mode
+    // copy relevant lines over
+    // delete lines from archive
 	return (true);
 }
 
@@ -177,23 +206,6 @@ char *fix_perm(char *octal)
 	return (ret);
 }
 
-// strip trailing whitespace, if backslash then turn into valid fname
-char *fix_str(char *str, int len, bool backslash)
-{
-	int idx = len - 1;
-	static char ret[MAX_STR_SIZE];
-
-	// strip trailing whitespace (and backspaces if enabled)
-	while (isspace(str[idx]) || (backslash && (str[idx] == '/'))) {
-		--idx;
-	}
-	strncpy(ret, str, idx + 1);
-	// null terminate after valid, buffer could have other crap in it
-	ret[idx + 1] = '\0';
-
-	return (ret);
-}
-
 char *fix_time(char *epoch)
 {
 	static char formatted[TIME_SIZE];
@@ -209,9 +221,6 @@ bool print_archive(int fd, bool verbose)
 {
 	struct ar_hdr *tmp = malloc(sizeof(struct ar_hdr));
 
-	if (!check_file(fd)) {
-		return (false);
-	}
 	while (get_next_header(fd, tmp) != -1) {
 		if (verbose) {
 			// permissions
@@ -234,6 +243,12 @@ bool print_archive(int fd, bool verbose)
 	return (true);
 }
 
+bool timeout_add(int fd, time_t timeout)
+{
+
+	return (false);
+}
+
 int main(int argc, char **argv)
 {
 	char *archive;
@@ -249,37 +264,53 @@ int main(int argc, char **argv)
 	/* operation key */
 	key = argv[1][1];
 
+	// consider archive init funciton
 	/* archive should be second argument */
 	archive = argv[2];
 
 	/* open archive */
 	fd = open(archive, O_RDWR);
 
+	/* check archive */
+	if (!check_file(fd)) {
+		return (false);
+	}
+
 	/* Acquire lock */
 
 	switch (key) {
-	case 'q':		// quickly append named files to archive
-
+	case 'q': // quickly append named files to archive
+		for (int i = 3; i < argc; ++i) {
+			add_file (fd, argv[i]);
+		}
 		break;
-	case 'x':		// extract named files
-
+	case 'x': // extract named files
+		for (int i = 3; i < argc; ++i) {
+			extract_file (fd, argv[i]);
+		}
 		break;
-	case 't':		// print a concise table of contents of archive
+	case 't': // print a concise table of contents of archive
 		print_archive(fd, false);
 		break;
-	case 'v':		// print a verbose table of contents of archive
+	case 'v': // print a verbose table of contents of archive
 		print_archive(fd, true);
 		break;
-	case 'd':		// delete named files from archive
-
+	case 'd': // delete named files from archive
+		for (int i = 3; i < argc; ++i) {
+			printf("delete: '%d'", (int)delete_file (fd, argv[i]));
+		}
 		break;
-	case 'A':		// quickly append all "regular" files in the current dir
-
+	case 'A': // quickly append all "regular" files in the current dir
+		for (int i = 3; i < argc; ++i) {
+			add_file (fd, argv[i]);
+		}
 		break;
-	case 'w':		// for a timeout, add all modified files to the archive
+	case 'w': // for a timeout, add all modified files to the archive
 		//bonus
+		assert(argc == 4);
+		timeout_add(fd, (time_t)atoi(argv[3]));
 		break;
-	default:		// unsupported operation
+	default: // unsupported operation
 		printf("Unsupported operation flag. Check for typos.\n");
 		break;
 	}
@@ -288,7 +319,7 @@ int main(int argc, char **argv)
 
 	errno = 0;
 	if (close(fd) == -1) {
-		printf("Error %d on archive close, data loss may have occured.", errno);
-
+		printf("Error %d on archive close, data loss possible.\n", errno);
+	}
 	return (EXIT_SUCCESS);
 }
