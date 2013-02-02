@@ -21,8 +21,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define TMP_ARCHIVE_NAME "tmp_archive"
-
 #define BLOCK_SIZE 1024		// bytes
 #define PERM_SIZE sizeof("rwxrwxrwx")
 #define MAX_STR_SIZE 255
