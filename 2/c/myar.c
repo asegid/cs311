@@ -21,7 +21,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define BLOCK_SIZE 1024		// bytes
+#define BLOCK_SIZE 8		// bytes
 #define PERM_SIZE sizeof("rwxrwxrwx")
 #define MAX_STR_SIZE 255
 #define TIME_SIZE 26
@@ -34,19 +34,21 @@
  */
 
 /* must be run before get_next_header */
-bool check_file(int fd)
+bool check_isarchive(int fd)
 {
 	char buf[SARMAG];
 
 	lseek(fd, 0, SEEK_SET);
 	read(fd, buf, SARMAG);
-	assert(strncmp(buf, ARMAG, sizeof(buf)) == 0);
+	if (strncmp(buf, ARMAG, sizeof(buf)) != 0) {
+		return (false);
+	}
 
 	return (true);
 }
 
 /*
- * assumes file offset only edited by self and check_file()
+ * assumes file offset only edited by self and check_isarchive()
  * pass in header to get, output header absolute offset
  */
 off_t get_next_header(int fd, struct ar_hdr * out)
@@ -93,10 +95,17 @@ char *fix_str(char *str, int len, bool backslash)
 
 int create_archive(char *fname)
 {
-	int fd = open(fname, O_RDWR);
 
-	ssize_t ret = write(fd, ARMAG, SARMAG);
-	assert(ret == SARMAG);
+	int fd;
+	ssize_t ret;
+
+	fd = open (fname, O_RDWR | O_CREAT | O_EXCL, 0666);
+	if (fd != -1) {
+	ret = write(fd, ARMAG, SARMAG);
+		if (ret != SARMAG) {
+			fd = -1;
+		}
+	}
 
 	return (fd);
 }
@@ -199,7 +208,7 @@ bool delete_bytes(int fd, off_t start, off_t end)
 			return (false);
 		}
 		/* jump forward to read again */
-		lseek(fd, cur + size - 1, SEEK_SET);
+		lseek(fd, cur, SEEK_SET);
 	}
 	/* truncate archive */
 	new_end = lseek(fd, 0, SEEK_END) - size - 1;
@@ -311,45 +320,67 @@ bool append_all(int fd)
 	return (false);
 }
 
-bool interpret_and_call(int fd, char key, int argc, char **argv)
+bool interpret_and_call(int fd, char key, int cnt, char **args)
 {
+	bool ret = false;
+
 	switch (key) {
-	case 'q':		// quickly append named files to archive
-		for (int i = 3; i < argc; ++i) {
-			append_file(fd, argv[i]);
+	/* quickly append named files to archive */
+	case 'q':
+		if (cnt >= 3) {
+			ret = true;
+			for (int i = 3; i < cnt; ++i) {
+			ret &= append_file(fd, args[i]);
+			}
 		}
 		break;
-	case 'x':		// extract named files
-		for (int i = 3; i < argc; ++i) {
-			extract_file(fd, argv[i]);
+	/* extract named files from archive */
+	case 'x':
+		if (cnt >= 3) {
+			ret = true;
+			for (int i = 3; i < cnt; ++i) {
+				ret &= extract_file(fd, args[i]);
+			}
 		}
 		break;
-	case 't':		// print a concise table of contents of archive
-		print_archive(fd, false);
+	/* print a concise table of contents of archive */
+	case 't':
+		ret = print_archive(fd, false);
 		break;
-	case 'v':		// print a verbose table of contents of archive
-		print_archive(fd, true);
+	/* print a verbose table of contents of archive */
+	case 'v':
+		ret = print_archive(fd, true);
 		break;
-	case 'd':		// delete named files from archive
-		for (int i = 3; i < argc; ++i) {
-			printf("delete: '%d'", (int) delete_file(fd, argv[i]));
+	/* delete named files from archive */
+	case 'd':
+		if (cnt >= 3) {
+			ret = true;
+			for (int i = 3; i < cnt; ++i) {
+				ret &= delete_file(fd, args[i]);
+			}
 		}
 		break;
-	case 'A':		// quickly append all "regular" files in the current dir
-		assert(argc == 2);
-		append_all(fd);
+	/* quickly append all "regular" files in the current dir */
+	case 'A':
+		if (cnt == 2) {
+			ret = append_all(fd);
+		}
 		break;
-	case 'w':		// for a timeout, add all modified files to the archive
+	/* for a timeout, add all modified files to the archive */
+	case 'w':
 		//bonus
-		assert(argc == 4);
-		timeout_add(fd, (time_t) atoi(argv[3]));
+		if (cnt == 4) {
+			ret = timeout_add(fd, (time_t) atoi(args[3]));
+		}
 		break;
-	default:		// unsupported operation
+	/* unsupported operation */
+	default:
 		printf("invalid option -- '%c'\n", key);
+		ret = false;
 		break;
 	}
 
-	return (true);
+	return (ret);
 }
 
 int main(int argc, char **argv)
@@ -373,25 +404,32 @@ int main(int argc, char **argv)
 
 	/* open archive */
 	fd = open(archive, O_RDWR);
+	if (fd == -1) {
+		if (key == 'q') {
+			fd = create_archive(archive);
+			printf("%s: Creating archive\n", archive);
+		}
+	}
 
 	/* check archive */
-	if (!check_file(fd)) {
-		// create an archive file with perms `666` only for q
-		// puke otherwise...
-		printf("%s: Malformed archive", archive);
-		return (false);
+	if (!check_isarchive(fd)) {
+		/* puke otherwise... */
+		printf("%s: Malformed or nonexistent archive\n", archive);
+		return (EXIT_FAILURE);
 	}
 
 	/* Acquire lock */
 
 	/* handle function calls */
-	interpret_and_call(fd, key, argc, argv);
+	if (interpret_and_call(fd, key, argc, argv) == false) {
+		printf("Error occurred executing: %c", key);
+	}
 
 	/* Unlock file */
 
 	errno = 0;
 	if (close(fd) == -1) {
-		printf("Error %d on archive close, data loss possible.\n", errno);
+		printf("Error %d on archive close, data loss? \n", errno);
 		return (EXIT_FAILURE);
 	}
 	return (EXIT_SUCCESS);
