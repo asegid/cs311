@@ -122,38 +122,29 @@ off_t find_header(int fd, char *fname, struct ar_hdr * out)
 	return (hdr_offset);
 }
 
-bool create_header(char *fname, struct ar_hdr * out)
+bool create_header(char *fname, struct ar_hdr *out)
 {
 	struct stat buf;
 
-	if (lstat(fname, &buf) == -1) {
+	if (lstat (fname, &buf) == -1) {
 		return (false);
 	}
+	
 	/* fill ar_hdr struct */
-	snprintf(out->ar_name, sizeof(out->ar_name), "%s/", fname);
-	snprintf(out->ar_date, sizeof(out->ar_date), "%llu",
-			(long long unsigned int)buf.st_mtime);
-	snprintf(out->ar_uid, sizeof(out->ar_uid), "%llu",
-			(long long unsigned int)buf.st_uid);
-	snprintf(out->ar_gid, sizeof(out->ar_gid), "%llu",
-			(long long unsigned int)buf.st_gid);
-	snprintf(out->ar_mode, sizeof(out->ar_mode), "%llu",
-			(long long unsigned int)buf.st_mode);
-	snprintf(out->ar_size, sizeof(out->ar_size), "%llu",
-			(long long unsigned int)buf.st_size);
-	memcpy(out->ar_fmag, ARFMAG, sizeof(out->ar_fmag));
-	/* strip newlines created by snprintf */
-	for (int i = 0; i < sizeof(struct ar_hdr); ++i) {
-		if (((char *)out)[i] == '\0') {
-			((char *)out)[i] = ' ';
-		}
-	}
+	strncpy(out->ar_name, fname, sizeof(out->ar_name));
+	snprintf(out->ar_date, sizeof(out->ar_date), "%llu", buf->st_mtime);
+	snprintf(out->ar_uid, sizeof(out->ar_uid), "%llu", buf->st_uid);
+	snprintf(out->ar_gid, sizeof(out->ar_gid), "%llu", buf->st_gid);
+	snprintf(out->ar_mode, sizeof(out->ar_mode), "%llu", buf->st_mode);
+	snprintf(out->ar_size, sizeof(out->ar_size), "%llu", buf->ar_size);
+	snprintf(out->ar_fmag, sizeof(out->ar_fmag), "%s", ARFMAG);
+
 	return (true);
 }
 
 bool append_file(int fd, char *fname)
 {
-	struct ar_hdr *hdr = malloc (sizeof (struct ar_hdr));
+	struct ar_hdr *hdr;
 	char buf[BLOCK_SIZE];
 	int file_fd;
 	ssize_t num_read;
@@ -161,8 +152,8 @@ bool append_file(int fd, char *fname)
 	/* seek to end of archive */
 	lseek(fd, 0, SEEK_END);
 	/* generate header, add to archive */
-	if (create_header(fname, hdr)) {
-		write(fd, (char *) hdr, sizeof(struct ar_hdr));
+	if( create_header (fname, hdr)) {
+		write(fd, (char *)hdr, sizeof (struct ar_hdr));
 	}
 	// copy contents
 	file_fd = open(fname, O_RDONLY);
@@ -172,9 +163,8 @@ bool append_file(int fd, char *fname)
 		}
 	}
 	errno = 0;
-	if (close(file_fd) == -1) {
-		printf("Error %d on closing %s. Check contents", errno,
-		       fname);
+	if (close(fd) == -1) {
+		printf("Error %d on closing %s. Check contents", errno, fname);
 	}
 
 	return (true);
@@ -195,14 +185,14 @@ bool delete_bytes(int fd, off_t start, off_t end)
 	lseek(fd, end + 1, SEEK_SET);
 	while ((num_read = read(fd, buf, BLOCK_SIZE)) > 0) {
 		cur = lseek(fd, 0, SEEK_CUR);
-		/* jump back to over write previous block */
+		/* jump back to over write previous block*/
 		lseek(fd, cur - num_read - size - 1, SEEK_SET);
 		/* if failure to write, archive may be broken */
 		if (write(fd, buf, num_read) != num_read) {
 			return (false);
 		}
 		/* jump forward to read again */
-		lseek(fd, cur + size - 1, SEEK_SET);
+		lseek(fd, cur + size, SEEK_SET);
 	}
 	/* truncate archive */
 	new_end = lseek(fd, 0, SEEK_END) - size - 1;
@@ -383,7 +373,6 @@ int main(int argc, char **argv)
 	if (!check_file(fd)) {
 		// create an archive file with perms `666` only for q
 		// puke otherwise...
-		printf("%s: Malformed archive", archive);
 		return (false);
 	}
 
