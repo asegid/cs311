@@ -62,8 +62,11 @@ off_t get_next_header(int fd, struct ar_hdr * out)
 	if (was_read == (sizeof(struct ar_hdr))) {
 		/* Try filling the struct with a cast */
 		memcpy(out, buf, sizeof(*out));
-		/* Advance past content */
-		lseek(fd, atoi(out->ar_size) + 1, SEEK_CUR);
+		/* advance past content */
+		if ((lseek(fd, atoi(out->ar_size), SEEK_CUR) % 2) == 1) {
+			/* ensure an even byte boundary */
+			lseek(fd, 1, SEEK_CUR);
+		}
 	} else {
 		offset = (off_t) (-1);
 	}
@@ -86,13 +89,6 @@ char *fix_str(char *str, int len, bool backslash)
 	ret[idx + 1] = '\0';
 
 	return (ret);
-}
-
-struct stat *get_stats(struct ar_hdr *hdr)
-{
-	struct stat *hdr_stat = malloc(sizeof(struct stat));
-	assert(lstat(hdr->ar_name, hdr_stat) == 0);
-	return (hdr_stat);
 }
 
 int create_archive(char *fname)
@@ -135,8 +131,8 @@ bool create_header(char *fname, struct ar_hdr * out)
 			(long long unsigned int)buf.st_uid);
 	snprintf(out->ar_gid, sizeof(out->ar_gid), "%llu",
 			(long long unsigned int)buf.st_gid);
-	snprintf(out->ar_mode, sizeof(out->ar_mode), "%llu",
-			(long long unsigned int)buf.st_mode);
+	snprintf(out->ar_mode, sizeof(out->ar_mode), "%llo",
+			(long long unsigned int)(buf.st_mode));
 	snprintf(out->ar_size, sizeof(out->ar_size), "%llu",
 			(long long unsigned int)buf.st_size);
 	memcpy(out->ar_fmag, ARFMAG, sizeof(out->ar_fmag));
@@ -224,8 +220,7 @@ bool delete_file(int fd, char *fname)
 		return (false);
 	}
 	file_end =
-	    file_start + (off_t) (sizeof(struct ar_hdr) +
-				  atoll(tmp->ar_size));
+	    file_start + (off_t) (sizeof(struct ar_hdr) + atoll(tmp->ar_size));
 
 	return (delete_bytes(fd, file_start, file_end));
 }
@@ -242,21 +237,22 @@ bool extract_file(int fd, char *fname)
 
 char *fix_perm(char *octal)
 {
-	// layout assumption (setuid)(setgid)(sticky bit)(U)(G)(O)
-	// don't care about upper three bits representation, not ar
 	static char ret[PERM_SIZE];
 
 	mode_t perm = (mode_t) strtol(octal, NULL, 8);
 	snprintf(ret, PERM_SIZE, "%c%c%c%c%c%c%c%c%c",
-		 ((perm & S_IRUSR) ? 'r' : '-'),
-		 ((perm & S_IWUSR) ? 'w' : '-'),
-		 ((perm & S_IXUSR) ? 'x' : '-'),
-		 ((perm & S_IRGRP) ? 'r' : '-'),
-		 ((perm & S_IWGRP) ? 'w' : '-'),
-		 ((perm & S_IXGRP) ? 'x' : '-'),
-		 ((perm & S_IROTH) ? 'r' : '-'),
-		 ((perm & S_IWOTH) ? 'w' : '-'),
-		 ((perm & S_IXOTH) ? 'x' : '-'));
+	         ((perm & S_IRUSR) ? 'r' : '-'),
+	         ((perm & S_IWUSR) ? 'w' : '-'),
+	         ((perm & S_IXUSR) ? ((perm & S_ISUID) ? 's' : 'x') :
+	                             ((perm & S_ISUID) ? 'S' : '-')),
+	         ((perm & S_IRGRP) ? 'r' : '-'),
+	         ((perm & S_IWGRP) ? 'w' : '-'),
+	         ((perm & S_IXGRP) ? ((perm & S_ISGID) ? 's' : 'x') :
+	                             ((perm & S_ISGID) ? 'S' : '-')),
+	         ((perm & S_IROTH) ? 'r' : '-'),
+	         ((perm & S_IWOTH) ? 'w' : '-'),
+	         ((perm & S_IXOTH) ? ((perm & S_ISVTX) ? 't' : 'x') :
+	                             ((perm & S_ISVTX) ? 'S' : '-')));
 
 	return (ret);
 }
@@ -289,8 +285,7 @@ bool print_archive(int fd, bool verbose)
 			       fix_str(tmp->ar_gid, sizeof(tmp->ar_gid),
 				       false));
 			// file size in bytes
-			printf("%s ",
-			       fix_str(tmp->ar_size, sizeof(tmp->ar_size),
+			printf("%s ", fix_str(tmp->ar_size, sizeof(tmp->ar_size),
 				       false));
 			// time
 			printf("%s ", fix_time(tmp->ar_date));
@@ -337,8 +332,7 @@ bool interpret_and_call(int fd, char key, int argc, char **argv)
 		break;
 	case 'd':		// delete named files from archive
 		for (int i = 3; i < argc; ++i) {
-			printf("delete: '%d'",
-			       (int) delete_file(fd, argv[i]));
+			printf("delete: '%d'", (int) delete_file(fd, argv[i]));
 		}
 		break;
 	case 'A':		// quickly append all "regular" files in the current dir
@@ -397,8 +391,7 @@ int main(int argc, char **argv)
 
 	errno = 0;
 	if (close(fd) == -1) {
-		printf("Error %d on archive close, data loss possible.\n",
-		       errno);
+		printf("Error %d on archive close, data loss possible.\n", errno);
 		return (EXIT_FAILURE);
 	}
 	return (EXIT_SUCCESS);
