@@ -159,7 +159,10 @@ bool append_file(int fd, char *fname)
 	ssize_t num_read;
 
 	/* seek to end of archive */
-	lseek(fd, 0, SEEK_END);
+	/* each archive file members begins on an even byte boundary */
+	if ((lseek(fd, 0, SEEK_END) % 2) == 1) {
+		write(fd, "\n", 1);
+	}
 	/* generate header, add to archive */
 	if (create_header(fname, hdr)) {
 		write(fd, (char *) hdr, sizeof(struct ar_hdr));
@@ -350,7 +353,7 @@ bool interpret_and_call(int fd, char key, int argc, char **argv)
 		timeout_add(fd, (time_t) atoi(argv[3]));
 		break;
 	default:		// unsupported operation
-		printf("Unsupported operation flag. Check for typos.\n");
+		printf("invalid option -- '%c'\n", key);
 		break;
 	}
 

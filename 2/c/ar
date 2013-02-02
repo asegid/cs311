@@ -20,22 +20,16 @@ This is a file
 file7/          1359347354  1000  100   100644  15        `
 This is a file
 
-file666/        1359519306  1000  100   100666  37        `
+file666/        1359519306  1000  100   33206   37        `
 I am a different file with 666 perms
 
-newFile/        1359780393  1000  100   33188   42        `
-I like
-the
-files
-and 
-they 
-don't like
-me
-newFile/        1359780393  1000  100   33188   42        `
-I like
-the
-files
-and 
-they 
-don't like
-me
+file666/        1359519306  1000  100   33206   37        `
+I am a different file with 666 perms
+
+file666/        1359519306  1000  100   33206   37        `
+I am a different file with 666 perms
+
+file666/        1359519306  1000  100   33206   36        `
+I am a different file with 666 perm
+file666/        1359519306  1000  100   33206   37        `
+I am a different file with 666 perms
