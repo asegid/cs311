@@ -23,1209 +23,3 @@ This is a file
 file666/        1359519306  1000  100   100666  37        `
 I am a different file with 666 perms
 
-tavianator.txt/ 1359660034  1000  100   100644  2681      `
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
-#include <fcntl.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-
-int
-main(int argc, char *argv[])
-{
-  /* Check the command-line arguments */
-  if (argc != 3) {
-    fprintf(stderr, "usage: %s <filename> <line number>\n", argv[0]);
-    return EXIT_FAILURE;
-  }
-
-  /* Open the file in read-write mode */
-  int fd = open(argv[1], O_RDWR);
-  if (fd < 0) {
-    perror("open");
-    return EXIT_FAILURE;
-  }
-
-  /* stat() the file to find the size */
-  struct stat stat_buf;
-  if (fstat(fd, &stat_buf) < 0) {
-    perror("fstat");
-    return EXIT_FAILURE;
-  }
-
-  /* Map the file into the current process's address space -- only works on
-     regular files */
-  void *map = mmap(NULL, stat_buf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED,
-                   fd, 0);
-  if (map == MAP_FAILED) {
-    perror("mmap");
-    return EXIT_FAILURE;
-  }
-
-  /* Get the line number to remove from the second argument */
-  int line = atoi(argv[2]);
-  if (line < 1) {
-    fprintf(stderr, "Line %d makes no sense.\n", line);
-    return EXIT_FAILURE;
-  }
-
-  /* Find the nth line */
-  char *linen = map;
-  int i;
-  for (i = 1; i < line; ++i) {
-    /* Search for the next '\n' character.  Assumes Linux newline encoding */
-    linen = memchr(linen, '\n', stat_buf.st_size - (linen - (char *)map));
-    if (!linen) {
-      fprintf(stderr, "Line %d is past EOF.\n", line);
-      return EXIT_FAILURE;
-    }
-    /* Point to the character one past the newline */
-    ++linen;
-  }
-
-  /* Find the (n + 1)th line */
-  char *linen1 = memchr(linen, '\n', stat_buf.st_size - (linen - (char *)map));
-  if (linen1) {
-    /* We found the end of the line, so swallow the newline */
-    ++linen1;
-
-    /* Erase the line by copying the memory at linen1 to linen */
-    memmove(linen, linen1, stat_buf.st_size - (linen1 - (char *)map));
-
-    /* Unmap the file */
-    if (munmap(map, stat_buf.st_size) < 0) {
-      perror("munmap");
-      return EXIT_FAILURE;
-    }
-
-    /* Shrink the file by the size of the nth line */
-    if (ftruncate(fd, stat_buf.st_size - (linen1 - linen)) < 0) {
-      perror("ftruncate");
-      return EXIT_FAILURE;
-    }
-  } else {
-    /* The nth line was the last line, so unmap the file */
-    if (munmap(map, stat_buf.st_size) < 0) {
-      perror("munmap");
-      return EXIT_FAILURE;
-    }
-
-    /* Chop off the last line */
-    if (ftruncate(fd, linen - (char *)map) < 0) {
-      perror("ftruncate");
-      return EXIT_FAILURE;
-    }
-  }
-
-  /* Close the file */
-  close(fd);
-
-  return EXIT_SUCCESS;
-}
-myar.c~/        1359780172  1000  100   100644  8893      `
-/*
- *      Author:  Jordan Bayles (baylesj), baylesj@engr.orst.edu
- *     Created:  01/27/2013 07:44:06 PM
- *    Filename:  myar.c
- *
- * Description:  Implementation of UNIX archive "ar" utility
- */
-
-#include <assert.h>
-#include <ctype.h>
-#include <errno.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
-
-#include <ar.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
-
-#define TMP_ARCHIVE_NAME "tmp_archive"
-
-#define BLOCK_SIZE 1024		// bytes
-#define PERM_SIZE sizeof("rwxrwxrwx")
-#define MAX_STR_SIZE 255
-#define TIME_SIZE 26
-#define EPOCH_SIZE 10
-
-/*
- * use lstat instead of stat!
- * almost all code for this project is in textbook
- * 71 while numRead read section is helpful
- */
-
-/* must be run before get_next_header */
-bool check_file(int fd)
-{
-	char buf[SARMAG];
-
-	lseek(fd, 0, SEEK_SET);
-	read(fd, buf, SARMAG);
-	assert(strncmp(buf, ARMAG, sizeof(buf)) == 0);
-
-	return (true);
-}
-
-/*
- * assumes file offset only edited by self and check_file()
- * pass in header to get, output header absolute offset
- */
-off_t get_next_header(int fd, struct ar_hdr * out)
-{
-	char buf[sizeof(struct ar_hdr)];
-	ssize_t was_read;
-	off_t offset;
-
-	/* Record header offset */
-	offset = lseek(fd, 0, SEEK_CUR);
-	/* Read and make sure we got everything */
-	was_read = read(fd, buf, sizeof(struct ar_hdr));
-	if (was_read == (sizeof(struct ar_hdr))) {
-		/* Try filling the struct with a cast */
-		memcpy(out, buf, sizeof(*out));
-		/* Advance past content */
-		lseek(fd, atoi(out->ar_size) + 1, SEEK_CUR);
-	} else {
-		offset = (off_t) (-1);
-	}
-
-	return (offset);
-}
-
-/* strip trailing whitespace, if backslash then turn into valid fname */
-char *fix_str(char *str, int len, bool backslash)
-{
-	int idx = len - 1;
-	static char ret[MAX_STR_SIZE];
-
-	/* strip trailing whitespace (and backspaces if enabled) */
-	while (isspace(str[idx]) || (backslash && (str[idx] == '/'))) {
-		--idx;
-	}
-	strncpy(ret, str, idx + 1);
-	/* null terminate after valid, buffer could have other crap in it */
-	ret[idx + 1] = '\0';
-
-	return (ret);
-}
-
-struct stat *get_stats(struct ar_hdr *hdr)
-{
-	struct stat *hdr_stat = malloc(sizeof(struct stat));
-	assert(lstat(hdr->ar_name, hdr_stat) == 0);
-	return (hdr_stat);
-}
-
-int create_archive(char *fname)
-{
-	int fd = open(fname, O_RDWR);
-
-	ssize_t ret = write(fd, ARMAG, SARMAG);
-	assert(ret == SARMAG);
-
-	return (fd);
-}
-
-off_t find_header(int fd, char *fname, struct ar_hdr * out)
-{
-	off_t hdr_offset;
-
-	do {
-		hdr_offset = get_next_header(fd, out);
-		if (hdr_offset == -1) {
-			return (-1);
-		}
-	} while (strcmp(fix_str(out->ar_name, sizeof(out->ar_name), true),
-			fname) != 0);
-
-	return (hdr_offset);
-}
-
-bool create_header(char *fname, struct ar_hdr *out)
-{
-	struct stat buf;
-
-	if (lstat (fname, &buf) == -1) {
-		return (false);
-	}
-	
-	/* fill ar_hdr struct */
-	strncpy(out->ar_name, fname, sizeof(out->ar_name));
-	snprintf(out->ar_date, sizeof(out->ar_date), "%llu", buf->st_mtime);
-	snprintf(out->ar_uid, sizeof(out->ar_uid), "%llu", buf->st_uid);
-	snprintf(out->ar_gid, sizeof(out->ar_gid), "%llu", buf->st_gid);
-	snprintf(out->ar_mode, sizeof(out->ar_mode), "%llu", buf->st_mode);
-	snprintf(out->ar_size, sizeof(out->ar_size), "%llu", buf->ar_size);
-	snprintf(out->ar_fmag, sizeof(out->ar_fmag), "%s", ARFMAG);
-
-	return (true);
-}
-
-bool append_file(int fd, char *fname)
-{
-	struct ar_hdr *hdr;
-	char buf[BLOCK_SIZE];
-	int file_fd;
-	ssize_t num_read;
-
-	/* seek to end of archive */
-	lseek(fd, 0, SEEK_END);
-	/* generate header, add to archive */
-	if( create_header (fname, hdr)) {
-		write(fd, (char *)hdr, sizeof (struct ar_hdr));
-	}
-	// copy contents
-	file_fd = open(fname, O_RDONLY);
-	while ((num_read = read(file_fd, buf, BLOCK_SIZE)) > 0) {
-		if (write(fd, buf, num_read) != num_read) {
-			return (false);
-		}
-	}
-	errno = 0;
-	if (close(fd) == -1) {
-		printf("Error %d on closing %s. Check contents", errno, fname);
-	}
-
-	return (true);
-}
-
-bool delete_bytes(int fd, off_t start, off_t end)
-{
-	char buf[BLOCK_SIZE];
-	off_t cur;
-	off_t new_end;
-	ssize_t num_read;
-	off_t size = end - start;
-
-	if ((size <= 0) || (fd < 0)) {
-		return (false);
-	}
-	/* set file offset to end of file to delete */
-	lseek(fd, end + 1, SEEK_SET);
-	while ((num_read = read(fd, buf, BLOCK_SIZE)) > 0) {
-		cur = lseek(fd, 0, SEEK_CUR);
-		/* jump back to over write previous block*/
-		lseek(fd, cur - num_read - size - 1, SEEK_SET);
-		/* if failure to write, archive may be broken */
-		if (write(fd, buf, num_read) != num_read) {
-			return (false);
-		}
-		/* jump forward to read again */
-		lseek(fd, cur + size, SEEK_SET);
-	}
-	/* truncate archive */
-	new_end = lseek(fd, 0, SEEK_END) - size - 1;
-	ftruncate(fd, new_end);
-
-	return (true);
-}
-
-bool delete_file(int fd, char *fname)
-{
-	off_t file_start;
-	off_t file_end;
-	struct ar_hdr *tmp;
-
-	tmp = malloc(sizeof(struct ar_hdr));
-	file_start = find_header(fd, fname, tmp);
-	if (file_start < 0) {
-		return (false);
-	}
-	file_end =
-	    file_start + (off_t) (sizeof(struct ar_hdr) +
-				  atoll(tmp->ar_size));
-
-	return (delete_bytes(fd, file_start, file_end));
-}
-
-bool extract_file(int fd, char *fname)
-{
-	// get file header from archive
-	// create new file with proper name
-	// change new file mode
-	// copy relevant lines over
-	// delete lines from archive
-	return (true);
-}
-
-char *fix_perm(char *octal)
-{
-	// layout assumption (setuid)(setgid)(sticky bit)(U)(G)(O)
-	// don't care about upper three bits representation, not ar
-	static char ret[PERM_SIZE];
-
-	mode_t perm = (mode_t) strtol(octal, NULL, 8);
-	snprintf(ret, PERM_SIZE, "%c%c%c%c%c%c%c%c%c",
-		 ((perm & S_IRUSR) ? 'r' : '-'),
-		 ((perm & S_IWUSR) ? 'w' : '-'),
-		 ((perm & S_IXUSR) ? 'x' : '-'),
-		 ((perm & S_IRGRP) ? 'r' : '-'),
-		 ((perm & S_IWGRP) ? 'w' : '-'),
-		 ((perm & S_IXGRP) ? 'x' : '-'),
-		 ((perm & S_IROTH) ? 'r' : '-'),
-		 ((perm & S_IWOTH) ? 'w' : '-'),
-		 ((perm & S_IXOTH) ? 'x' : '-'));
-
-	return (ret);
-}
-
-char *fix_time(char *epoch)
-{
-	static char formatted[TIME_SIZE];
-	time_t systime;
-
-	systime = atoll(epoch);
-	strftime(formatted, TIME_SIZE, "%b %d %R %Y", localtime(&systime));
-
-	return (formatted);
-}
-
-bool print_archive(int fd, bool verbose)
-{
-	struct ar_hdr *tmp = malloc(sizeof(struct ar_hdr));
-
-	while (get_next_header(fd, tmp) != -1) {
-		if (verbose) {
-			// permissions
-			printf("%s ", fix_perm(tmp->ar_mode));
-			// uid
-			printf("%s/",
-			       fix_str(tmp->ar_uid, sizeof(tmp->ar_uid),
-				       false));
-			//gid
-			printf("%s     ",
-			       fix_str(tmp->ar_gid, sizeof(tmp->ar_gid),
-				       false));
-			// file size in bytes
-			printf("%s ",
-			       fix_str(tmp->ar_size, sizeof(tmp->ar_size),
-				       false));
-			// time
-			printf("%s ", fix_time(tmp->ar_date));
-		}
-		//printf ("-%s-", (char *)tmp);
-		printf("%s\n",
-		       fix_str(tmp->ar_name, sizeof(tmp->ar_name), true));
-		//memset(tmp, 0, sizeof(tmp));
-	}
-	free(tmp);
-
-	return (true);
-}
-
-bool timeout_add(int fd, time_t timeout)
-{
-
-	return (false);
-}
-
-bool append_all(int fd)
-{
-	return (false);
-}
-
-bool interpret_and_call(int fd, char key, int argc, char **argv)
-{
-	switch (key) {
-	case 'q':		// quickly append named files to archive
-		for (int i = 3; i < argc; ++i) {
-			append_file(fd, argv[i]);
-		}
-		break;
-	case 'x':		// extract named files
-		for (int i = 3; i < argc; ++i) {
-			extract_file(fd, argv[i]);
-		}
-		break;
-	case 't':		// print a concise table of contents of archive
-		print_archive(fd, false);
-		break;
-	case 'v':		// print a verbose table of contents of archive
-		print_archive(fd, true);
-		break;
-	case 'd':		// delete named files from archive
-		for (int i = 3; i < argc; ++i) {
-			printf("delete: '%d'",
-			       (int) delete_file(fd, argv[i]));
-		}
-		break;
-	case 'A':		// quickly append all "regular" files in the current dir
-		assert(argc == 2);
-		append_all(fd);
-		break;
-	case 'w':		// for a timeout, add all modified files to the archive
-		//bonus
-		assert(argc == 4);
-		timeout_add(fd, (time_t) atoi(argv[3]));
-		break;
-	default:		// unsupported operation
-		printf("Unsupported operation flag. Check for typos.\n");
-		break;
-	}
-
-	return (true);
-}
-
-int main(int argc, char **argv)
-{
-	char *archive;
-	int fd;
-	char key;
-
-	/* Syntax "myar key afile name ..." where afile=archive, key=opt */
-	assert(argc >= 3);
-	assert(strlen(argv[1]) == 2);
-
-	assert(argv[1][0] == '-');
-
-	/* operation key */
-	key = argv[1][1];
-
-	// consider archive init function
-	/* archive should be second argument */
-	archive = argv[2];
-
-	/* open archive */
-	fd = open(archive, O_RDWR);
-
-	/* check archive */
-	if (!check_file(fd)) {
-		// create an archive file with perms `666` only for q
-		// puke otherwise...
-		return (false);
-	}
-
-	/* Acquire lock */
-
-	/* handle function calls */
-	interpret_and_call(fd, key, argc, argv);
-
-	/* Unlock file */
-
-	errno = 0;
-	if (close(fd) == -1) {
-		printf("Error %d on archive close, data loss possible.\n",
-		       errno);
-		return (EXIT_FAILURE);
-	}
-	return (EXIT_SUCCESS);
-}
-
-.myar.c.swp/    1359863394  1000  100   100644  20480     `
-b0VIM 7.3      ^ŞQ ,6 r?  jordan                                  fenrir                                  ~jordan/Dropbox/schoolwork/cs311/2/c/myar.c                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  utf-8 3210    #"! U                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 tp           •                                   –                     ¦       #                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     ad     t     •       ı  ½  •  }  z  =  9  8  $    ş  é  Ö  Â  ®  œ  ›  ‹  w  d  N  7  #  "    İ  Ä  ¯  ™  ˜  •  w  D        ê  Í  Ë  ¸  ·    †  X  F  C  B  2  0  /  ,  ë  ³  ¯  |  z  X  E  6  5    ÷
-  Ë
-  ™
-  m
-  B
-   
-  
-  Ç	  ¡	  †	  ‚	  x	  _	  \	  [	  I	  G	  F	  ı  Ë  É  µ  •  ”  W      
-  í  §  ‘        ~  ^  \  [  R  D  C    ı  Ü  Å  ¹  µ  ²  ±  £  ¡     d  b  O  N  H      õ  ñ  ­  œ  ›  …  ƒ  ‚  M  K  9  8        è  «  u  K    ï  »  “  ]  2  ü  Ó    t          	/* strip newlines created by snprintf */ 	memcpy(out->ar_fmag, ARFMAG, sizeof(out->ar_fmag)); 			(long long unsigned int)buf.st_size); 	snprintf(out->ar_size, sizeof(out->ar_size), "%llu", 			(long long unsigned int)(buf.st_mode)); 	snprintf(out->ar_mode, sizeof(out->ar_mode), "%llo", 			(long long unsigned int)buf.st_gid); 	snprintf(out->ar_gid, sizeof(out->ar_gid), "%llu", 			(long long unsigned int)buf.st_uid); 	snprintf(out->ar_uid, sizeof(out->ar_uid), "%llu", 			(long long unsigned int)buf.st_mtime); 	snprintf(out->ar_date, sizeof(out->ar_date), "%llu", 	snprintf(out->ar_name, sizeof(out->ar_name), "%s/", fname); 	/* fill ar_hdr struct */ 	} 		return (false); 	if (lstat(fname, &buf) == -1) {  	struct stat buf; { bool create_header(char *fname, struct ar_hdr * out)  } 	return (hdr_offset);  			fname) != 0); 	} while (strcmp(fix_str(out->ar_name, sizeof(out->ar_name), true), 		} 			return (-1); 		if (hdr_offset == -1) { 		hdr_offset = get_next_header(fd, out); 	do {  	off_t hdr_offset; { off_t find_header(int fd, char *fname, struct ar_hdr * out)  } 	return (fd);  	} 		} 			fd = -1; 		if (ret != SARMAG) { 	ret = write(fd, ARMAG, SARMAG); 	if (fd != -1) { 	fd = open (fname, O_RDWR | O_CREAT | O_EXCL, 0666);  	ssize_t ret; 	int fd;  { int create_archive(char *fname)  } 	return (ret);  	ret[idx + 1] = '\0'; 	/* null terminate after valid, buffer could have other crap in it */ 	strncpy(ret, str, idx + 1); 	} 		--idx; 	while (isspace(str[idx]) || (backslash && (str[idx] == '/'))) { 	/* strip trailing whitespace (and backspaces if enabled) */  	static char ret[MAX_STR_SIZE]; 	int idx = len - 1; { char *fix_str(char *str, int len, bool backslash) /* strip trailing whitespace, if backslash then turn into valid fname */  } 	return (offset);  	} 		offset = (off_t) (-1); 	} else { 		} 			lseek(fd, 1, SEEK_CUR); 			/* ensure an even byte boundary */ 		if ((lseek(fd, atoi(out->ar_size), SEEK_CUR) % 2) == 1) { 		/* advance past content */ 		memcpy(out, buf, sizeof(*out)); 		/* Try filling the struct with a cast */ 	if (was_read == (sizeof(struct ar_hdr))) { 	was_read = read(fd, buf, sizeof(struct ar_hdr)); 	/* Read and make sure we got everything */ 	offset = lseek(fd, 0, SEEK_CUR); 	/* Record header offset */  	off_t offset; 	ssize_t was_read; 	char buf[sizeof(struct ar_hdr)]; { off_t get_next_header(int fd, struct ar_hdr * out)  */  * pass in header to get, output header absolute offset  * assumes file offset only edited by self and check_isarchive() /*  } 	return (true);  	} 		return (false); 	if (strncmp(buf, ARMAG, sizeof(buf)) != 0) { 	read(fd, buf, SARMAG); 	lseek(fd, 0, SEEK_SET);  	char buf[SARMAG]; { bool check_isarchive(int fd) /* must be run before get_next_header */   */  * 71 while numRead read section is helpful  * almost all code for this project is in textbook  * use lstat instead of stat! /*  #define EPOCH_SIZE 10 #define TIME_SIZE 26 #define MAX_STR_SIZE 255 #define PERM_SIZE sizeof("rwxrwxrwx") #define BLOCK_SIZE 8		// bytes  #include <unistd.h> #include <sys/types.h> #include <sys/stat.h> #include <fcntl.h> #include <dirent.h> #include <ar.h>  #include <time.h> #include <string.h> #include <stdlib.h> #include <stdio.h> #include <stdbool.h> #include <errno.h> #include <ctype.h> #include <assert.h>   */  * Description:  Implementation of UNIX archive "ar" utility  *  *    Filename:  myar.c  *     Created:  01/27/2013 07:44:06 PM  *      Author:  Jordan Bayles (baylesj), baylesj@engr.orst.edu /* ad  u   )     ¦       Ö  Ì  »  ‡  s  j  U  !    ô  ·  £  ˜  n  j  H  7  ú  Ù  Ö  Ê  É  ¹  ·  ¶    ‹  Š  y  w  v  R  P  A  *  )        ë  Ù  Ö  ¨  ˆ  \  9  5  2  1  !      Ş  Ü  É  È  ¸  ‹  €  n  _  <          Ş
-  Ó
-  Á
-  ²
-  
-  i
-  d
-  `
-  W
-  #
-  
-  ö	  í	  ¹	  ®	  	  „	  ]	  R	  @	  1	  	  é  ä  à  ×  š    }  [  W  N      ı  ë  ¹  µ  ¬    …  Z  K  B  ?  >  /  -  ,    
-  ú  ñ  æ  å     Œ  m  l  P  O  :  '  &    Ú  Æ  Å  ±  ”  ƒ  o  N             æ  Ì    v  s  r  ^  ]  @    Ø  Õ  Ô  Á  À  ´  œ  _  F  C  +  )                                                                                                                           } 	return (EXIT_SUCCESS); 	} 		return (EXIT_FAILURE); 		printf("Error %d on archive close, data loss? \n", errno); 	if (close(fd) == -1) { 	errno = 0;  	/* Unlock file */  	} 		printf("Error occurred executing: %c", key); 	if (interpret_and_call(fd, key, argc, argv) == false) { 	/* handle function calls */  	/* Acquire lock */  	} 		return (EXIT_FAILURE); 		printf("%s: Malformed or nonexistent archive\n", archive); 		/* puke otherwise... */ 	if (!check_isarchive(fd)) { 	/* check archive */  	} 		} 			printf("%s: Creating archive\n", archive); 			fd = create_archive(archive); 		if (key == 'q') { 	if (fd == -1) { 	fd = open(archive, O_RDWR); 	/* open archive */  	archive = argv[2]; 	/* archive should be second argument */ 	// consider archive init function  	key = argv[1][1]; 	/* operation key */  	assert(argv[1][0] == '-');  	assert(strlen(argv[1]) == 2); 	assert(argc >= 3); 	/* Syntax "myar key afile name ..." where afile=archive, key=opt */  	char key; 	int fd; 	char *archive; { int main(int argc, char **argv)  } 	return (ret);  	} 		break; 		ret = false; 		printf("invalid option -- '%c'\n", key); 	default: 	/* unsupported operation */ 		break; 		} 			ret = timeout_add(fd, (time_t) atoi(args[3])); 		if (cnt == 4) { 		//bonus 	case 'w': 	/* for a timeout, add all modified files to the archive */ 		break; 		} 			ret = append_all(fd, args[2]); 		if (cnt == 3) { 	case 'A': 	/* quickly append all "regular" files in the current dir */ 		break; 		} 			} 				ret &= delete_file(fd, args[i]); 			for (int i = 3; i < cnt; ++i) { 			ret = true; 		if (cnt >= 3) { 	case 'd': 	/* delete named files from archive */ 		break; 		ret = print_archive(fd, true); 	case 'v': 	/* print a verbose table of contents of archive */ 		break; 		ret = print_archive(fd, false); 	case 't': 	/* print a concise table of contents of archive */ 		break; 		} 			} 				ret &= extract_file(fd, args[i]); 			for (int i = 3; i < cnt; ++i) { 			ret = true; 		if (cnt >= 3) { 	case 'x': 	/* extract named files from archive */ 		break; 		} 			} 			ret &= append_file(fd, args[i]); 			for (int i = 3; i < cnt; ++i) { 			ret = true; 		if (cnt >= 3) { 	case 'q': 	/* quickly append named files to archive */ 	switch (key) {  	bool ret = false; { bool interpret_and_call(int fd, char key, int cnt, char **args)  } 	return (true);  	} 		} 			append_file(fd, entry->d_name); 		  &&(strcmp(entry->d_name, self) != 0)) { 		if ((entry->d_type == DT_REG) 	while ((entry = readdir(cur_dir)) != NULL) { 	} 		return (false); 	if (cur_dir == NULL) {  	cur_dir = opendir("."); 	errno = 0;  	struct dirent *entry; 	DIR *cur_dir; { bool append_all(int fd, char *self)  } 	return (false);  { bool timeout_add(int fd, time_t timeout)  } 	return (true);  	free(tmp); 	} 		//memset(tmp, 0, sizeof(tmp)); 		       fix_str(tmp->ar_name, sizeof(tmp->ar_name), true)); 		printf("%s\n", 		//printf ("-%s-", (char *)tmp); 		} 			printf("%s ", fix_time(tmp->ar_date)); 			// time 				       false)); 			printf("%s ", fix_str(tmp->ar_size, sizeof(tmp->ar_size), 			// file size in bytes 				       false)); 			       fix_str(tmp->ar_gid, sizeof(tmp->ar_gid), 			printf("%s     ", 			//gid 				       false)); 			       fix_str(tmp->ar_uid, sizeof(tmp->ar_uid), 			printf("%s/", 			// uid 			printf("%s ", fix_perm(tmp->ar_mode)); ad     m            Í  «    Œ  ‰  y  w  v  P  N       ò  ß  Ş  À    U  ?  <    ó  Á  ·  ¥  ¢    k  0    ï  ë  è  Ô  È  «  q  `  ]  \  L  J  I      ş  ò  â  Ï  ´  ³  “    ~  N  /  ù
-  Ù
-  ª
-  x
-  E
-  
-  
-   
-  İ	  Á	  ¾	  ¦	  x	  _	  ^	  N	  L	  K	  %	  #	  	  ÿ  ê  é  Ã  ˜    o  l  `      ä  â  á  º  ¸  —  r  Y  <          ï  í  Ğ  Ï  Ÿ  o  E    Ü    s  I  
-  Ë  ¡  w  8  ø  ÷  è  æ  å  É  Ç  ¤  “  ’  y  4  3        ò  ğ  »  º      m  l                               			// permissions 		if (verbose) { 	while (get_next_header(fd, tmp) != -1) {  	struct ar_hdr *tmp = malloc(sizeof(struct ar_hdr)); { bool print_archive(int fd, bool verbose)  } 	return (formatted);  	strftime(formatted, TIME_SIZE, "%b %d %R %Y", localtime(&systime)); 	systime = atoll(epoch);  	time_t systime; 	static char formatted[TIME_SIZE]; { char *fix_time(char *epoch)  } 	return (ret);  	                             ((perm & S_ISVTX) ? 'S' : '-'))); 	         ((perm & S_IXOTH) ? ((perm & S_ISVTX) ? 't' : 'x') : 	         ((perm & S_IWOTH) ? 'w' : '-'), 	         ((perm & S_IROTH) ? 'r' : '-'), 	                             ((perm & S_ISGID) ? 'S' : '-')), 	         ((perm & S_IXGRP) ? ((perm & S_ISGID) ? 's' : 'x') : 	         ((perm & S_IWGRP) ? 'w' : '-'), 	         ((perm & S_IRGRP) ? 'r' : '-'), 	                             ((perm & S_ISUID) ? 'S' : '-')), 	         ((perm & S_IXUSR) ? ((perm & S_ISUID) ? 's' : 'x') : 	         ((perm & S_IWUSR) ? 'w' : '-'), 	         ((perm & S_IRUSR) ? 'r' : '-'), 	snprintf(ret, PERM_SIZE, "%c%c%c%c%c%c%c%c%c", 	mode_t perm = (mode_t) strtol(octal, NULL, 8);  	static char ret[PERM_SIZE]; { char *fix_perm(char *octal)  } 	return (true); 	// delete lines from archive 	// copy relevant lines over 	// change new file mode 	// create new file with proper name 	// get file header from archive { bool extract_file(int fd, char *fname)  } 	return (delete_bytes(fd, file_start, file_end));  	    file_start + (off_t) (sizeof(struct ar_hdr) + atoll(tmp->ar_size)); 	file_end = 	} 		return (false); 	if (file_start < 0) { 	file_start = find_header(fd, fname, tmp); 	tmp = malloc(sizeof(struct ar_hdr));  	struct ar_hdr *tmp; 	off_t file_end; 	off_t file_start; { bool delete_file(int fd, char *fname)  } 	return (true);  	ftruncate(fd, new_end); 	new_end = lseek(fd, 0, SEEK_END) - size - 1; 	/* truncate archive */ 	} 		lseek(fd, cur, SEEK_SET); 		/* jump forward to read again */ 		} 			return (false); 		if (write(fd, buf, num_read) != num_read) { 		/* if failure to write, archive may be broken */ 		lseek(fd, cur - num_read - size - 1, SEEK_SET); 		/* jump back to over write previous block */ 		cur = lseek(fd, 0, SEEK_CUR); 	while ((num_read = read(fd, buf, BLOCK_SIZE)) > 0) { 	lseek(fd, end + 1, SEEK_SET); 	/* set file offset to end of file to delete */ 	} 		return (false); 	if ((size <= 0) || (fd < 0)) {  	off_t size = end - start; 	ssize_t num_read; 	off_t new_end; 	off_t cur; 	char buf[BLOCK_SIZE]; { bool delete_bytes(int fd, off_t start, off_t end)  } 	return (true);  	} 		       fname); 		printf("Error %d on closing %s. Check contents", errno, 	if (close(file_fd) == -1) { 	errno = 0; 	/* catch errors */ 	} 		} 			return (false); 		if (write(fd, buf, num_read) != num_read) { 	while ((num_read = read(file_fd, buf, BLOCK_SIZE)) > 0) { 	file_fd = open(fname, O_RDONLY); 	/* copy contents */ 	} 		return (false); 	} else { 		write(fd, (char *) hdr, sizeof(struct ar_hdr)); 	if (create_header(fname, hdr)) { 	/* generate header, add to archive */ 	} 		write(fd, "\n", 1); 	if ((lseek(fd, 0, SEEK_END) % 2) == 1) { 	/* each archive file members begins on an even byte boundary */ 	/* seek to end of archive */  	ssize_t num_read; 	int file_fd; 	char buf[BLOCK_SIZE]; 	struct ar_hdr *hdr = malloc (sizeof (struct ar_hdr)); { bool append_file(int fd, char *fname)  } 	return (true); 	} 		} 			((char *)out)[i] = ' '; 		if (((char *)out)[i] == '\0') { 	for (int i = 0; i < sizeof(struct ar_hdr); ++i) { ar_broken/      1359835475  1000  100   100644  896       `
-!<arch>
-log.txt/        1359335978  1000  1000  33188   49        `
-Sunday, 1/27/2013 5:00 - started creating myar.c
-
-log.txt/        1359335978  1000  1000  33188   49        `
-Sunday, 1/27/2013 5:00 - started creating myar.c
-
-butt.txt/       1359783227  1000  1000  33188   608       `
-assassassassassassassassassasajjjjjjjjjjjjjjjjjjjjjjjjjreegtfattttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt
-myar.c/         1359863390  1000  100   100644  10230     `
-/*
- *      Author:  Jordan Bayles (baylesj), baylesj@engr.orst.edu
- *     Created:  01/27/2013 07:44:06 PM
- *    Filename:  myar.c
- *
- * Description:  Implementation of UNIX archive "ar" utility
- */
-
-#include <assert.h>
-#include <ctype.h>
-#include <errno.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
-
-#include <ar.h>
-#include <dirent.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
-
-#define BLOCK_SIZE 8		// bytes
-#define PERM_SIZE sizeof("rwxrwxrwx")
-#define MAX_STR_SIZE 255
-#define TIME_SIZE 26
-#define EPOCH_SIZE 10
-
-/*
- * use lstat instead of stat!
- * almost all code for this project is in textbook
- * 71 while numRead read section is helpful
- */
-
-/* must be run before get_next_header */
-bool check_isarchive(int fd)
-{
-	char buf[SARMAG];
-
-	lseek(fd, 0, SEEK_SET);
-	read(fd, buf, SARMAG);
-	if (strncmp(buf, ARMAG, sizeof(buf)) != 0) {
-		return (false);
-	}
-
-	return (true);
-}
-
-/*
- * assumes file offset only edited by self and check_isarchive()
- * pass in header to get, output header absolute offset
- */
-off_t get_next_header(int fd, struct ar_hdr * out)
-{
-	char buf[sizeof(struct ar_hdr)];
-	ssize_t was_read;
-	off_t offset;
-
-	/* Record header offset */
-	offset = lseek(fd, 0, SEEK_CUR);
-	/* Read and make sure we got everything */
-	was_read = read(fd, buf, sizeof(struct ar_hdr));
-	if (was_read == (sizeof(struct ar_hdr))) {
-		/* Try filling the struct with a cast */
-		memcpy(out, buf, sizeof(*out));
-		/* advance past content */
-		if ((lseek(fd, atoi(out->ar_size), SEEK_CUR) % 2) == 1) {
-			/* ensure an even byte boundary */
-			lseek(fd, 1, SEEK_CUR);
-		}
-	} else {
-		offset = (off_t) (-1);
-	}
-
-	return (offset);
-}
-
-/* strip trailing whitespace, if backslash then turn into valid fname */
-char *fix_str(char *str, int len, bool backslash)
-{
-	int idx = len - 1;
-	static char ret[MAX_STR_SIZE];
-
-	/* strip trailing whitespace (and backspaces if enabled) */
-	while (isspace(str[idx]) || (backslash && (str[idx] == '/'))) {
-		--idx;
-	}
-	strncpy(ret, str, idx + 1);
-	/* null terminate after valid, buffer could have other crap in it */
-	ret[idx + 1] = '\0';
-
-	return (ret);
-}
-
-int create_archive(char *fname)
-{
-
-	int fd;
-	ssize_t ret;
-
-	fd = open (fname, O_RDWR | O_CREAT | O_EXCL, 0666);
-	if (fd != -1) {
-	ret = write(fd, ARMAG, SARMAG);
-		if (ret != SARMAG) {
-			fd = -1;
-		}
-	}
-
-	return (fd);
-}
-
-off_t find_header(int fd, char *fname, struct ar_hdr * out)
-{
-	off_t hdr_offset;
-
-	do {
-		hdr_offset = get_next_header(fd, out);
-		if (hdr_offset == -1) {
-			return (-1);
-		}
-	} while (strcmp(fix_str(out->ar_name, sizeof(out->ar_name), true),
-			fname) != 0);
-
-	return (hdr_offset);
-}
-
-bool create_header(char *fname, struct ar_hdr * out)
-{
-	struct stat buf;
-
-	if (lstat(fname, &buf) == -1) {
-		return (false);
-	}
-	/* fill ar_hdr struct */
-	snprintf(out->ar_name, sizeof(out->ar_name), "%s/", fname);
-	snprintf(out->ar_date, sizeof(out->ar_date), "%llu",
-			(long long unsigned int)buf.st_mtime);
-	snprintf(out->ar_uid, sizeof(out->ar_uid), "%llu",
-			(long long unsigned int)buf.st_uid);
-	snprintf(out->ar_gid, sizeof(out->ar_gid), "%llu",
-			(long long unsigned int)buf.st_gid);
-	snprintf(out->ar_mode, sizeof(out->ar_mode), "%llo",
-			(long long unsigned int)(buf.st_mode));
-	snprintf(out->ar_size, sizeof(out->ar_size), "%llu",
-			(long long unsigned int)buf.st_size);
-	memcpy(out->ar_fmag, ARFMAG, sizeof(out->ar_fmag));
-	/* strip newlines created by snprintf */
-	for (int i = 0; i < sizeof(struct ar_hdr); ++i) {
-		if (((char *)out)[i] == '\0') {
-			((char *)out)[i] = ' ';
-		}
-	}
-	return (true);
-}
-
-bool append_file(int fd, char *fname)
-{
-	struct ar_hdr *hdr = malloc (sizeof (struct ar_hdr));
-	char buf[BLOCK_SIZE];
-	int file_fd;
-	ssize_t num_read;
-
-	/* seek to end of archive */
-	/* each archive file members begins on an even byte boundary */
-	if ((lseek(fd, 0, SEEK_END) % 2) == 1) {
-		write(fd, "\n", 1);
-	}
-	/* generate header, add to archive */
-	if (create_header(fname, hdr)) {
-		write(fd, (char *) hdr, sizeof(struct ar_hdr));
-	} else {
-		return (false);
-	}
-	/* copy contents */
-	file_fd = open(fname, O_RDONLY);
-	while ((num_read = read(file_fd, buf, BLOCK_SIZE)) > 0) {
-		if (write(fd, buf, num_read) != num_read) {
-			return (false);
-		}
-	}
-	/* catch errors */
-	errno = 0;
-	if (close(file_fd) == -1) {
-		printf("Error %d on closing %s. Check contents", errno,
-		       fname);
-	}
-
-	return (true);
-}
-
-bool delete_bytes(int fd, off_t start, off_t end)
-{
-	char buf[BLOCK_SIZE];
-	off_t cur;
-	off_t new_end;
-	ssize_t num_read;
-	off_t size = end - start;
-
-	if ((size <= 0) || (fd < 0)) {
-		return (false);
-	}
-	/* set file offset to end of file to delete */
-	lseek(fd, end + 1, SEEK_SET);
-	while ((num_read = read(fd, buf, BLOCK_SIZE)) > 0) {
-		cur = lseek(fd, 0, SEEK_CUR);
-		/* jump back to over write previous block */
-		lseek(fd, cur - num_read - size - 1, SEEK_SET);
-		/* if failure to write, archive may be broken */
-		if (write(fd, buf, num_read) != num_read) {
-			return (false);
-		}
-		/* jump forward to read again */
-		lseek(fd, cur, SEEK_SET);
-	}
-	/* truncate archive */
-	new_end = lseek(fd, 0, SEEK_END) - size - 1;
-	ftruncate(fd, new_end);
-
-	return (true);
-}
-
-bool delete_file(int fd, char *fname)
-{
-	off_t file_start;
-	off_t file_end;
-	struct ar_hdr *tmp;
-
-	tmp = malloc(sizeof(struct ar_hdr));
-	file_start = find_header(fd, fname, tmp);
-	if (file_start < 0) {
-		return (false);
-	}
-	file_end =
-	    file_start + (off_t) (sizeof(struct ar_hdr) + atoll(tmp->ar_size));
-
-	return (delete_bytes(fd, file_start, file_end));
-}
-
-bool extract_file(int fd, char *fname)
-{
-	// get file header from archive
-	// create new file with proper name
-	// change new file mode
-	// copy relevant lines over
-	// delete lines from archive
-	return (true);
-}
-
-char *fix_perm(char *octal)
-{
-	static char ret[PERM_SIZE];
-
-	mode_t perm = (mode_t) strtol(octal, NULL, 8);
-	snprintf(ret, PERM_SIZE, "%c%c%c%c%c%c%c%c%c",
-	         ((perm & S_IRUSR) ? 'r' : '-'),
-	         ((perm & S_IWUSR) ? 'w' : '-'),
-	         ((perm & S_IXUSR) ? ((perm & S_ISUID) ? 's' : 'x') :
-	                             ((perm & S_ISUID) ? 'S' : '-')),
-	         ((perm & S_IRGRP) ? 'r' : '-'),
-	         ((perm & S_IWGRP) ? 'w' : '-'),
-	         ((perm & S_IXGRP) ? ((perm & S_ISGID) ? 's' : 'x') :
-	                             ((perm & S_ISGID) ? 'S' : '-')),
-	         ((perm & S_IROTH) ? 'r' : '-'),
-	         ((perm & S_IWOTH) ? 'w' : '-'),
-	         ((perm & S_IXOTH) ? ((perm & S_ISVTX) ? 't' : 'x') :
-	                             ((perm & S_ISVTX) ? 'S' : '-')));
-
-	return (ret);
-}
-
-char *fix_time(char *epoch)
-{
-	static char formatted[TIME_SIZE];
-	time_t systime;
-
-	systime = atoll(epoch);
-	strftime(formatted, TIME_SIZE, "%b %d %R %Y", localtime(&systime));
-
-	return (formatted);
-}
-
-bool print_archive(int fd, bool verbose)
-{
-	struct ar_hdr *tmp = malloc(sizeof(struct ar_hdr));
-
-	while (get_next_header(fd, tmp) != -1) {
-		if (verbose) {
-			// permissions
-			printf("%s ", fix_perm(tmp->ar_mode));
-			// uid
-			printf("%s/",
-			       fix_str(tmp->ar_uid, sizeof(tmp->ar_uid),
-				       false));
-			//gid
-			printf("%s     ",
-			       fix_str(tmp->ar_gid, sizeof(tmp->ar_gid),
-				       false));
-			// file size in bytes
-			printf("%s ", fix_str(tmp->ar_size, sizeof(tmp->ar_size),
-				       false));
-			// time
-			printf("%s ", fix_time(tmp->ar_date));
-		}
-		//printf ("-%s-", (char *)tmp);
-		printf("%s\n",
-		       fix_str(tmp->ar_name, sizeof(tmp->ar_name), true));
-		//memset(tmp, 0, sizeof(tmp));
-	}
-	free(tmp);
-
-	return (true);
-}
-
-bool timeout_add(int fd, time_t timeout)
-{
-
-	return (false);
-}
-
-bool append_all(int fd, char *self)
-{
-	DIR *cur_dir;
-	struct dirent *entry;
-
-	errno = 0;
-	cur_dir = opendir(".");
-
-	if (cur_dir == NULL) {
-		return (false);
-	}
-	while ((entry = readdir(cur_dir)) != NULL) {
-		if ((entry->d_type == DT_REG)
-		  &&(strcmp(entry->d_name, self) != 0)) {
-			append_file(fd, entry->d_name);
-		}
-	}
-
-	return (true);
-}
-
-bool interpret_and_call(int fd, char key, int cnt, char **args)
-{
-	bool ret = false;
-
-	switch (key) {
-	/* quickly append named files to archive */
-	case 'q':
-		if (cnt >= 3) {
-			ret = true;
-			for (int i = 3; i < cnt; ++i) {
-			ret &= append_file(fd, args[i]);
-			}
-		}
-		break;
-	/* extract named files from archive */
-	case 'x':
-		if (cnt >= 3) {
-			ret = true;
-			for (int i = 3; i < cnt; ++i) {
-				ret &= extract_file(fd, args[i]);
-			}
-		}
-		break;
-	/* print a concise table of contents of archive */
-	case 't':
-		ret = print_archive(fd, false);
-		break;
-	/* print a verbose table of contents of archive */
-	case 'v':
-		ret = print_archive(fd, true);
-		break;
-	/* delete named files from archive */
-	case 'd':
-		if (cnt >= 3) {
-			ret = true;
-			for (int i = 3; i < cnt; ++i) {
-				ret &= delete_file(fd, args[i]);
-			}
-		}
-		break;
-	/* quickly append all "regular" files in the current dir */
-	case 'A':
-		if (cnt == 3) {
-			ret = append_all(fd, args[2]);
-		}
-		break;
-	/* for a timeout, add all modified files to the archive */
-	case 'w':
-		//bonus
-		if (cnt == 4) {
-			ret = timeout_add(fd, (time_t) atoi(args[3]));
-		}
-		break;
-	/* unsupported operation */
-	default:
-		printf("invalid option -- '%c'\n", key);
-		ret = false;
-		break;
-	}
-
-	return (ret);
-}
-
-int main(int argc, char **argv)
-{
-	char *archive;
-	int fd;
-	char key;
-
-	/* Syntax "myar key afile name ..." where afile=archive, key=opt */
-	assert(argc >= 3);
-	assert(strlen(argv[1]) == 2);
-
-	assert(argv[1][0] == '-');
-
-	/* operation key */
-	key = argv[1][1];
-
-	// consider archive init function
-	/* archive should be second argument */
-	archive = argv[2];
-
-	/* open archive */
-	fd = open(archive, O_RDWR);
-	if (fd == -1) {
-		if (key == 'q') {
-			fd = create_archive(archive);
-			printf("%s: Creating archive\n", archive);
-		}
-	}
-
-	/* check archive */
-	if (!check_isarchive(fd)) {
-		/* puke otherwise... */
-		printf("%s: Malformed or nonexistent archive\n", archive);
-		return (EXIT_FAILURE);
-	}
-
-	/* Acquire lock */
-
-	/* handle function calls */
-	if (interpret_and_call(fd, key, argc, argv) == false) {
-		printf("Error occurred executing: %c", key);
-	}
-
-	/* Unlock file */
-
-	errno = 0;
-	if (close(fd) == -1) {
-		printf("Error %d on archive close, data loss? \n", errno);
-		return (EXIT_FAILURE);
-	}
-	return (EXIT_SUCCESS);
-}
-ar~/            1359765957  1000  100   100644  638       `
-!<arch>
-file1/          1359347348  1000  10000 100644  15        `
-This is a file
-
-file2/          1359347349  1000  100   100644  15        `
-This is a file
-
-file3/          1359347350  1000  100   100644  15        `
-This is a file
-
-file4/          1359347351  1000  100   100644  15        `
-This is a file
-
-file5/          1359347352  1000  100   100644  15        `
-This is a file
-
-file6/          1359347353  1000  100   100644  15        `
-This is a file
-
-file7/          1359347354  1000  100   100644  15        `
-This is a file
-
-file666/        1359519306  1000  100   100666  37        `
-I am a different file with 666 perms
-
-abc/            1359847054  1000  100   100644  35        `
-abc
-def
-ghi
-jkl
-mno
-pqr
-stu
-vwx
-yz
-
-tst/            1359846075  1000  100   100644  211       `
-!<arch>
-ewFile/        1359780393  1000  100   100644  42        `
-I like
-the
-files
-and 
-they 
-don't like
-me
-newFile/        1359780393  1000  100   100644  42        `
-I like
-the
-files
-and 
-they 
-don't like
-me
-
-ar.h/           1359389118  1000  100   100644  1725      `
-/* Header describing `ar' archive file format.
-   Copyright (C) 1996 Free Software Foundation, Inc.
-   This file is part of the GNU C Library.
-
-   The GNU C Library is free software; you can redistribute it and/or
-   modify it under the terms of the GNU Lesser General Public
-   License as published by the Free Software Foundation; either
-   version 2.1 of the License, or (at your option) any later version.
-
-   The GNU C Library is distributed in the hope that it will be useful,
-   but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-   Lesser General Public License for more details.
-
-   You should have received a copy of the GNU Lesser General Public
-   License along with the GNU C Library; if not, see
-   <http://www.gnu.org/licenses/>.  */
-
-#ifndef _AR_H
-#define _AR_H 1
-
-#include <sys/cdefs.h>
-
-/* Archive files start with the ARMAG identifying string.  Then follows a
-   `struct ar_hdr', and as many bytes of member file data as its `ar_size'
-   member indicates, for each member file.  */
-
-#define ARMAG	"!<arch>\n"	/* String that begins an archive file.  */
-#define SARMAG	8		/* Size of that string.  */
-
-#define ARFMAG	"`\n"		/* String in ar_fmag at end of each header.  */
-
-__BEGIN_DECLS
-
-struct ar_hdr
-  {
-    char ar_name[16];		/* Member file name, sometimes / terminated. */
-    char ar_date[12];		/* File date, decimal seconds since Epoch.  */
-    char ar_uid[6], ar_gid[6];	/* User and group IDs, in ASCII decimal.  */
-    char ar_mode[8];		/* File mode, in ASCII octal.  */
-    char ar_size[10];		/* File size, in ASCII decimal.  */
-    char ar_fmag[2];		/* Always contains ARFMAG.  */
-  };
-
-__END_DECLS
-
-#endif /* ar.h */
-
-a.out/          1359863391  1000  100   100755  23987     `
-ELF          >    `@     @       èC          @ 8  @ $ !       @       @ @     @ @     À      À                           @      @                                          @       @     „#      „#                    ˆ#      ˆ#`     ˆ#`           x                     #       #`      #`     à      à                         @     @     D       D              Påtd   Ğ      Ğ@     Ğ@     ¼       ¼              Qåtd                                                  /lib64/ld-linux-x86-64.so.2          GNU                        GNU  S’Ü„xê»qhÛ$2S´Á                                                     B                     
-                     º                      ˆ                      v                                                                   3                     ä                      ³                      G                     ;                     9                     ~                      Ğ                                            ÿ                      Ë                      !                                                               '                       ¬                      Ö                      n                      İ                      •                                           6                       ú                      J                       ì                       libm.so.6 _ITM_deregisterTMCloneTable __gmon_start__ _Jv_RegisterClasses _ITM_registerTMCloneTable libc.so.6 readdir strncmp ftruncate strncpy puts strftime __assert_fail strtol strlen __errno_location read lseek memcpy malloc opendir __ctype_b_loc atoi close open localtime atoll strcmp __libc_start_main write snprintf free __lxstat GLIBC_2.3 GLIBC_2.14 GLIBC_2.2.5                                              d          ii   P     ”‘–   Z     ui	   e      €%`                    %`                   ¨%`                   °%`                   ¸%`                   À%`                   È%`                   Ğ%`                   Ø%`        	           à%`        
-           è%`                   ğ%`                   ø%`                    &`                   &`                   &`                   &`                    &`                   (&`                   0&`                   8&`                   @&`                   H&`                   P&`                   X&`                   `&`                   h&`                   p&`                   x&`                   €&`                    HƒìH‹  H…Àtè[  HƒÄÃ      ÿ5
-  ÿ%  @ ÿ%
-  h    éàÿÿÿÿ%  h   éĞÿÿÿÿ%ú  h   éÀÿÿÿÿ%ò  h   é°ÿÿÿÿ%ê  h   é ÿÿÿÿ%â  h   éÿÿÿÿ%Ú  h   é€ÿÿÿÿ%Ò  h   épÿÿÿÿ%Ê  h   é`ÿÿÿÿ%Â  h	   éPÿÿÿÿ%º  h
-   é@ÿÿÿÿ%²  h   é0ÿÿÿÿ%ª  h   é ÿÿÿÿ%¢  h   éÿÿÿÿ%š  h   é ÿÿÿÿ%’  h   éğşÿÿÿ%Š  h   éàşÿÿÿ%‚  h   éĞşÿÿÿ%z  h   éÀşÿÿÿ%r  h   é°şÿÿÿ%j  h   é şÿÿÿ%b  h   éşÿÿÿ%Z  h   é€şÿÿÿ%R  h   épşÿÿÿ%J  h   é`şÿÿÿ%B  h   éPşÿÿÿ%:  h   é@şÿÿÿ%2  h   é0şÿÿÿ%*  h   é şÿÿ1íI‰Ñ^H‰âHƒäğPTIÇÀ€@ HÇÁğ@ HÇÇY@ èÿÿÿôf@ ¸Ÿ&` UH-˜&` HƒøH‰åw]Ã¸    H…Àtô]¿˜&` ÿà€    ¸˜&` UH-˜&` HÁøH‰åH‰ÂHÁê?HĞH‰ÆHÑşu]Ãº    H…Òtô]¿˜&` ÿâ€    €=™   uUH‰åè~ÿÿÿ]Æ†  óÃ@ Hƒ=p   t¸    H…ÀtU¿˜#` H‰åÿĞ]é{ÿÿÿévÿÿÿfUH‰åHƒì ‰}ì‹Eìº    ¾    ‰ÇèõıÿÿHMğ‹Eìº   H‰Î‰ÇèşÿÿHEğº   ¾¸@ H‰Çè9ıÿÿ…Àt¸    ë¸   ÉÃUH‰åHƒì`‰}¬H‰u ‹E¬º   ¾    ‰Çè”ıÿÿH‰EøHM°‹E¬º<   H‰Î‰ÇèªıÿÿH‰EğHƒ}ğ<…–   H‹E H‹U°H‰H‹U¸H‰PH‹UÀH‰PH‹UÈH‰PH‹UĞH‰P H‹UØH‰P(H‹UàH‰P0‹Uè‰P8H‹E HƒÀ0H‰ÇèúıÿÿHcÈ‹E¬º   H‰Î‰ÇèıÿÿH‰ÂHÁú?HÁê?HĞƒàH)ĞHƒøu‹E¬º   ¾   ‰Çè×üÿÿëHÇEøÿÿÿÿH‹EøÉÃUH‰åHƒì H‰}è‰uä‰ĞˆEà‹Eäƒè‰EüëƒmüèıÿÿH‹ ‹UüHcÊH‹UèHÊ¶H¾ÒHÒHĞ· ·À%    …ÀuË€}à t‹EüHcĞH‹EèHĞ¶ </t±‹EüƒÀHcĞH‹EèH‰Æ¿ '` èŸûÿÿ‹EüƒÀH˜Æ€ '`  ¸ '` ÉÃUH‰åHƒì H‰}èH‹Eèº¶  ¾Â   H‰Ç¸    èÒüÿÿ‰Eüƒ}üÿt&‹Eüº   ¾¸@ ‰ÇèuûÿÿH‰EğHƒ}ğtÇEüÿÿÿÿ‹EüÉÃUH‰åHƒì0‰}ìH‰uàH‰UØH‹UØ‹EìH‰Ö‰ÇèóıÿÿH‰EøHƒ}øÿu	HÇÀÿÿÿÿë-H‹EØº   ¾   H‰Çè¹şÿÿH‹UàH‰ÖH‰ÇèÑûÿÿ…Àu²H‹EøÉÃUH‰åHì°   H‰½XÿÿÿH‰µPÿÿÿH•`ÿÿÿH‹…XÿÿÿH‰ÖH‰Çèe  ƒøÿu
-¸    éP  H‹…PÿÿÿH‹•XÿÿÿH‰ÑºÁ@ ¾   H‰Ç¸    èŞúÿÿH‹E¸H‹•PÿÿÿHzH‰ÁºÅ@ ¾   ¸    è¸úÿÿ‹…|ÿÿÿ‰ÀH‹•PÿÿÿHzH‰ÁºÅ@ ¾   ¸    èúÿÿ‹E€‰ÀH‹•PÿÿÿHz"H‰ÁºÅ@ ¾   ¸    ègúÿÿ‹…xÿÿÿ‰ÀH‹•PÿÿÿHz(H‰ÁºÊ@ ¾   ¸    è=úÿÿH‹EH‹•PÿÿÿHz0H‰ÁºÅ@ ¾
-   ¸    èúÿÿH‹…PÿÿÿHƒÀ:º   ¾Ï@ H‰ÇèªúÿÿÇEü    ë.‹EüHcĞH‹…PÿÿÿHĞ¶ „Àu‹EüHcĞH‹…PÿÿÿHĞÆ  ƒEü‹Eüƒø;vÊ¸   ÉÃUH‰åHƒì0‰}ÜH‰uĞ¿<   èkúÿÿH‰Eø‹EÜº   ¾    ‰Çè£ùÿÿH‰ÂHÁú?HÁê?HĞƒàH)ĞHƒøu‹EÜº   ¾Ò@ ‰ÇèùÿÿH‹UøH‹EĞH‰ÖH‰Çèûıÿÿ„Àt1H‹Mø‹EÜº<   H‰Î‰ÇèØøÿÿH‹EĞ¾    H‰Ç¸    èúÿÿ‰Eôë)¸    ë~H‹UèHMà‹EÜH‰Î‰Çè¡øÿÿH;Eèt¸    ë\HMà‹Eôº   H‰Î‰ÇèùÿÿH‰EèHƒ}è ½è.øÿÿÇ     ‹Eô‰Çèîøÿÿƒøÿuèøÿÿ‹ H‹UĞ‰Æ¿Ø@ ¸    è}øÿÿ¸   ÉÃUH‰åHƒìP‰}ÌH‰uÀH‰U¸H‹EÀH‹U¸H‰ÑH)ÁH‰ÈH‰EøHƒ}ø ~ƒ}Ì y
-¸    éò   H‹E¸HH‹EÌº    H‰Î‰ÇèMøÿÿë{‹EÌº   ¾    ‰Çè7øÿÿH‰EèH‹EğH‹UèH‰ÑH)ÁH‰ÈH+EøHHÿ‹EÌº    H‰Î‰ÇèøÿÿH‹UğHMĞ‹EÌH‰Î‰Çèƒ÷ÿÿH;Eğt¸    ëqH‹Mè‹EÌº    H‰Î‰ÇèĞ÷ÿÿHMĞ‹EÌº   H‰Î‰Çèê÷ÿÿH‰EğHƒ}ğ `ÿÿÿ‹EÌº   ¾    ‰Çè—÷ÿÿH+EøHƒèH‰EàH‹Uà‹EÌH‰Ö‰Çèj÷ÿÿ¸   ÉÃUH‰åHƒì0‰}ÜH‰uĞ¿<   è
-øÿÿH‰EøH‹UøH‹MĞ‹EÜH‰Î‰ÇèsûÿÿH‰EğHƒ}ğ y¸    ë7H‹EøHƒÀ0H‰Çèo÷ÿÿHƒÀ<H‰ÂH‹EğHĞH‰EèH‹UèH‹Mğ‹EÜH‰Î‰ÇèRşÿÿÉÃUH‰å‰}üH‰uğ¸   ]ÃUH‰åHƒìPH‰}èH‹Eèº   ¾    H‰ÇèB÷ÿÿ‰Eü‹Eüƒà…Àt‹Eü%   …Àt¸t   ë¸x   A‰Áë‹Eü%   …Àt¸S   ë¸-   A‰Á‹Eüƒà…ÀtA¸w   ëA¸-   ‹Eüƒà…Àt¿r   ë¿-   ‹Eüƒà…Àt‹Eü%   …Àt¸s   ë¸x   ‰Æë‹Eü%   …Àt¸S   ë¸-   ‰Æ‹Eüƒà…Àt¹w   ë¹-   ‹Eüƒà …Àtºr   ëº-   ‹Eüƒà@…Àt‹Eü%   …Àt¸s   ë¸x   A‰Ãë‹Eü%   …Àt¸S   ë¸-   A‰Ã‹Eü%€   …ÀtAºw   ëAº-   ‹Eü%   …Àt¸r   ë¸-   D‰L$(D‰D$ ‰|$‰t$‰L$‰$E‰ÙE‰Ğ‰Áºÿ@ ¾
-   ¿Ú&` ¸    èõÿÿ¸Ú&` ÉÃUH‰åHƒì H‰}èH‹EèH‰ÇèfõÿÿH‰EøHEøH‰ÇèFôÿÿH‰Áº@ ¾   ¿À&` è¯õÿÿ¸À&` ÉÃUH‰åHƒì ‰}ì‰ğˆEè¿<   è~õÿÿH‰Eøéğ   €}è „È   H‹EøHƒÀ(H‰ÇèÇıÿÿH‰Æ¿@ ¸    èiôÿÿH‹EøHƒÀº    ¾   H‰Çè¸÷ÿÿH‰Æ¿Á@ ¸    è=ôÿÿH‹EøHƒÀ"º    ¾   H‰ÇèŒ÷ÿÿH‰Æ¿"@ ¸    èôÿÿH‹EøHƒÀ0º    ¾
-   H‰Çè`÷ÿÿH‰Æ¿@ ¸    èåóÿÿH‹EøHƒÀH‰Çè×şÿÿH‰Æ¿@ ¸    èÃóÿÿH‹Eøº   ¾   H‰Çè÷ÿÿH‰ÇèUóÿÿH‹Uø‹EìH‰Ö‰ÇèöÿÿHƒøÿ…õşÿÿH‹EøH‰ÇèŞòÿÿ¸   ÉÃUH‰å‰}üH‰uğ¸    ]ÃUH‰åHƒì ‰}ìH‰uàèÑòÿÿÇ     ¿*@ èóÿÿH‰EøHƒ}ø uC¸    ëXH‹Eğ¶@<u0H‹EğHPH‹EàH‰ÆH‰×èœóÿÿ…ÀtH‹EğHP‹EìH‰Ö‰ÇèOùÿÿH‹EøH‰Çè·óÿÿH‰EğHƒ}ğ u­¸   ÉÃUH‰åSHƒì8‰}Ü‰ğ‰UÔH‰MÈˆEØÆEï ¾EØƒèAƒø7‡Ÿ  ‰ÀH‹ÅH@ ÿàƒ}Ô¤  ÆEïÇEè   ë9¶]ï‹EèH˜HÅ    H‹EÈHĞH‹‹EÜH‰Ö‰Çèºøÿÿ¶À!Ø…À•ÀˆEïƒEè‹Eè;EÔ|¿éQ  ƒ}ÔJ  ÆEïÇEä   ë9¶]ï‹EäH˜HÅ    H‹EÈHĞH‹‹EÜH‰Ö‰Çè;ûÿÿ¶À!Ø…À•ÀˆEïƒEä‹Eä;EÔ|¿é÷   ‹EÜ¾    ‰ÇèıÿÿˆEïéê   ‹EÜ¾   ‰ÇèıÿÿˆEïéÓ   ƒ}ÔÂ   ÆEïÇEà   ë9¶]ï‹EàH˜HÅ    H‹EÈHĞH‹‹EÜH‰Ö‰Çè3úÿÿ¶À!Ø…À•ÀˆEïƒEà‹Eà;EÔ|¿ërƒ}ÔuoH‹EÈHƒÀH‹‹EÜH‰Ö‰ÇèØıÿÿˆEïëRƒ}ÔuOH‹EÈHƒÀH‹ H‰Çè/òÿÿHcĞ‹EÜH‰Ö‰Çè˜ıÿÿˆEïë'¾EØ‰Æ¿,@ ¸    èõğÿÿÆEï ëë
-ëëë¶EïHƒÄ8[]ÃUH‰åHƒì ‰}ìH‰uàƒ}ì¹È@ º  ¾@ ¿@ èéğÿÿH‹EàHƒÀH‹ H‰ÇèvğÿÿHƒøt¹È@ º  ¾@ ¿@ è·ğÿÿH‹EàHƒÀH‹ ¶ <-t¹È@ º   ¾@ ¿.@ èŒğÿÿH‹EàHƒÀH‹ ¶@ˆEûH‹EàH‹@H‰EğH‹Eğ¾   H‰Ç¸    èñÿÿ‰Eüƒ}üÿu+€}ûqu%H‹EğH‰Çèôÿÿ‰EüH‹EğH‰Æ¿@@ ¸    èäïÿÿ‹Eü‰Çèöñÿÿƒğ„ÀtH‹EğH‰Æ¿X@ ¸    è½ïÿÿ¸   ëo¾uûH‹Mà‹Uì‹Eü‰ÇèÌüÿÿƒğ„Àt¾Eû‰Æ¿~@ ¸    è…ïÿÿè ïÿÿÇ     ‹Eü‰ÇèÀïÿÿƒøÿuèæîÿÿ‹ ‰Æ¿ @ ¸    èSïÿÿ¸   ë¸    ÉÃD  H‰l$ØL‰d$àH-  L%€  H‰\$ĞL‰l$èL‰t$ğL‰|$øHƒì8L)åA‰ÿI‰öHÁıI‰Õ1Ûè)îÿÿH…ít@ L‰êL‰öD‰ÿAÿÜHƒÃH9ëuêH‹\$H‹l$L‹d$L‹l$ L‹t$(L‹|$0HƒÄ8Ã€    óÃf.„     @ H‰òH‰ş¿   é€îÿÿHƒìHƒÄÃ             !<arch>
- %s/ %llu %llo `
- 
-     Error %d on closing %s. Check contents %c%c%c%c%c%c%c%c%c %b %d %R %Y %s  %s      . invalid option -- '%c'
-     Õ@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     {@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     &@     “@     &@     &@     M@     &@     d@     ø@     ğ@     myar.c argc >= 3 strlen(argv[1]) == 2 argv[1][0] == '-' %s: Creating archive
-   %s: Malformed or nonexistent archive
- Error occurred executing: %c      Error %d on archive close, data loss? 
- main    ;¼      °êÿÿ  ìÿÿØ   |íÿÿ0  ÙíÿÿP  Éîÿÿp  gïÿÿ  Âïÿÿ°  )ğÿÿĞ  ¼ñÿÿğ  êòÿÿ  ôÿÿ0  šôÿÿP  ¬ôÿÿp  böÿÿ  ¨öÿÿ°  é÷ÿÿĞ  û÷ÿÿğ  ‹øÿÿ  ‰úÿÿ8   üÿÿX  °üÿÿ€  Àüÿÿ˜             zR x      °ëÿÿ*                  zR x  $       éÿÿà   FJw€ ?;*3$"       D   Dìÿÿ]    A†CX     d   ìÿÿğ    A†Cë     „   Qíÿÿ    A†C™     ¤   Ïíÿÿ[    A†CV     Ä   
-îÿÿg    A†Cb     ä   Qîÿÿ“   A†C      Äïÿÿ.   A†C)    $  Òğÿÿ3   A†C.    D  åñÿÿ}    A†Cx     d  Bòÿÿ    A†CM      „  4òÿÿ¶   A†C±    ¤  ÊóÿÿF    A†CA     Ä  ğóÿÿA   A†C<    ä  õÿÿ    A†CM        õÿÿ    A†C‹  $   $  sõÿÿş   A†CEƒô         L  I÷ÿÿ’   A†C $   l  Àøÿÿ‰    J†Œf@ƒX      ”  (ùÿÿ              ¬   ùÿÿ                    @      @                                  d              `
-@             @            ˆ#`                          #`                   õşÿo    `@            ˜@            €@     
-       q                                          ˆ%`            ¸                           ¨@            @                   	              şÿÿo    P@     ÿÿÿo           ğÿÿo    
-@                                                                                                              #`                     –
-@     ¦
-@     ¶
-@     Æ
-@     Ö
-@     æ
-@     ö
-@     @     @     &@     6@     F@     V@     f@     v@     †@     –@     ¦@     ¶@     Æ@     Ö@     æ@     ö@     @     @     &@     6@     F@     V@                     GCC: (GNU) 4.7.2 ,             L@     Ÿ                      £       y   p  %  L@     ë@         y  å  —   ’   {  «  int …    …B   ÷  †;   w  ‡;   j   ˆB     Š;   T   ‹B   Å  Œ^   *    ”^   Ú  ¢^   4  §^   í  µ^   ¨  ¸^   ö   ‚  0Y  ?  €ã   €;  €º  €  € Ò  €À ¢  €€  €€Õ  –  ™  §   Ç  Z§   ï  fÚ   €    F‘      K¹   J  xµ  	#  z¹   # 	ú   {å   #    
-ö   Ì  ²    Ä   <#;  	†  %;  # 	j  &K  #	æ  '[  #	r   '[  #"	   (¼  #(	Ê  )k  #0	    *{  #: 
-ö   K  ²    
-ö   [  ²    
-ö   k  ²    
-ö   {  ²   	 
-ö   ‹  ²      ß  	¸  †   # 	Ô  §   #	»   4   #	   -   #	^   !ß  # 
-ö   ï  ²   ÿ 	c.     L   O  .   r  )  æ  
-3  Ã   DIR 	€9  D  ì   
-.  	Ş  
-0e   # 	y  
-5†   #	8  
-=œ   #	0  
->‘   #	¾  
-@p   #	"  
-A{   # 	ù  
-CW   #$	H  
-Ee   #(	°  
-J§   #0	A   
-NÄ   #8	¤   
-PÏ   #@	ÿ  
-[Œ  #H	µ  
-\Œ  #X	Í  
-]Œ  #h	ñ   
-j  #x 
-å   .  ²    $  &p  L@     ©@         p  fd &W   ‘\buf (¼  ‘`   Ó   7Y  ©@     ™@     `   æ  fd 7W   ‘œout 7æ  ‘buf 9ì  ‘ Ÿ  :d  ‘`  ;Y  ‘h Ì  
-ö   ü  ²   ; Ë   Qğ   ™@     7@     À   p  str Qğ   ‘Xlen QW   ‘TÊ  Qp  ‘Pidx SW   ‘lret Tp  	 '`      
-ö   €  ²   ş   aW   7@     ’@        Ğ     ağ   ‘Xfd dW   ‘lret ed  ‘` "   rY  ’@     ù@     €  .  fd rW   ‘\   rğ   ‘Pout ræ  ‘H  tY  ‘h P  p  ù@     Œ@     à        ğ   ‘È~out æ  ‘À~buf ƒ?  ‘Ğ~F@     …@     i –W   ‘l  m  p  Œ@     º@     @    fd W   ‘L   ğ   ‘@hdr  æ  ‘hbuf ¡¼  ‘P   ¢W   ‘d^  £d  ‘X ½  Áp  º@     í@        ³  fd ÁW   ‘¼à  ÁY  ‘°end ÁY  ‘¨buf Ã¼  ‘@cur ÄY  ‘Xh  ÅY  ‘P^  Æd  ‘`Í  ÇY  ‘h í  àp  í@     j@          fd àW   ‘L   àğ   ‘@Û  âY  ‘`S  ãY  ‘Xtmp äæ  ‘h ®   ñp  j@     |@     `  a  fd ñW   ‘l   ñğ   ‘` ‡  ûğ   |@     2@     À  ¹  ˜  ûğ   ‘Xret ık  	Ú&`     ‹  ÿv  ‘l A  ğ   2@     x@        	  P  ğ   ‘X   	  	À&`     V    ‘h 
-ö   %	  ²    \  p  x@     ¹@     €  y	  fd W   ‘\  p  ‘Xtmp æ  ‘h 5   <p  ¹@     Ë@     à  ¾	  fd <W   ‘l  <  ‘`   Bp  Ë@     [@     @  !
-  fd BW   ‘\e   Bğ   ‘P…   D!
-  ‘hg  E'
-  ‘` .  ‹  ø  Wp  [@     Y@          fd WW   ‘Lkey Wö   ‘Hcnt WW   ‘D^  W  ‘¸ret Yp  ‘_¡@     ë@     Â
-  i `W   ‘X ş@     H@     å
-  i iW   ‘T ‰@     Ó@     i zW   ‘P  ğ     –W   Y@     ë@        ‘    –W   ‘\c  –  ‘P  ˜ğ   ‘`fd ™W   ‘lkey šö   ‘k  ¡  	È@      
-ö   ¡  ²    ‘   %  $ >  $ >   :;I   I  :;  (   :;  	 :;I8
-  
-I  ! I/  :;   :;I   <  .?:;'I@–B   :;I
-  4 :;I
-  4 :;I
-   :;I
-    .?:;'I@—B  .?:;'I@–B   :;I
-  4 :;I
-   :;I
-  4 :;I
-  .?:;'I@—B    4 I4
-  & I   œ   ­   û      /usr/include/bits /usr/include /usr/include/sys  myar.c    types.h   stdio.h   types.h   time.h   ar.h   dirent.h   ctype.h   dirent.h   stat.h     	L@     &¯=Y‘wY5êv‘®A?[…K2=”/ I 1 f?’æY1¿Éguux=12Ku’%LK1…É¡(I"e$;$e$I"¼‘g, J‡Y1åİ.?g]ƒ*yŸ rø­å°Y13L tg¡‘/v+Ÿw wX%åY1é×ƒuwe¯K1²Y1½‚ufJ º tuXX º ttX 
-< vf J ‚ 	f wf J t _ yfQ º tyXR º txX 4 zf 	J 
-t ] a J t [ cM º tU\ º tT > € J ‚ g  J t X : Y1¾ó#Y1óØY "$$,"I m¼Y1®Y1è­Øuw»Ÿ GmY1uL¯ŸK ‘ 5 J†[ŸK ‘ 5 J†[![![ŸK ‘ 5 J†1g 2g&1KKT.	<<BC(Kwê fƒ ‚„  …$½ƒggå]Yz­O­åuvY ar_fmag formatted ar_mode file_fd find_header DT_DIR timeout_add st_blksize DT_FIFO __nlink_t d_name self __ino_t ar_gid GNU C 4.7.2 cur_dir long long unsigned int st_blocks extract_file d_reclen ar_hdr fix_str get_next_header _ISlower stat __unused tv_nsec __mode_t d_type _ISxdigit _Bool st_gid DT_REG st_mode st_nlink fix_time timespec file_end print_archive ar_date DT_BLK st_ino long long int __dev_t _IScntrl was_read __syscall_slong_t _ISdigit DT_WHT ar_size _ISspace file_start DT_LNK delete_file __pad0 fname append_all argc create_archive /home/jordan/Dropbox/schoolwork/cs311/2/c DT_CHR systime args argv new_end myar.c __gid_t dirent ar_name DT_UNKNOWN _ISpunct _ISprint short int st_mtim delete_bytes backslash d_off __blksize_t ar_uid __ssize_t __uid_t st_atim _ISgraph verbose hdr_offset tv_sec sizetype DT_SOCK _ISalpha __dirstream create_header num_read entry append_file unsigned char fix_perm timeout octal __time_t _ISalnum st_size d_ino st_uid __off_t st_ctim _ISblank st_dev short unsigned int interpret_and_call main __PRETTY_FUNCTION__ check_isarchive __blkcnt_t _ISupper st_rdev epoch                 w               w       \        v\       ]        w                ]       ^        w^       a        wa       L       vL      M       w                M      N       wN      Q       wQ      ê       vê      ë       w                ë      ì       wì      ï       wï      E       vE      F       w                F      G       wG      J       wJ      ¬       v¬      ­       w                ­      ®       w®      ±       w±      ?       v?      @       w                @      A       wA      D       wD      m       vm      n       w                n      o       wo      r       wr              v       ¡       w                ¡      ¢       w¢      ¥       w¥             v             w                             w      "       w"      /       v/      0       w                0      1       w1      4       w4      å       vå      æ       w                æ      ç       wç      ê       wê      +	       v+	      ,	       w                ,	      -	       w-	      0	       w0	      l
-       vl
-      m
-       w                m
-      n
-       wn
-      q
-       wq
-      ~
-       v~
-      
-       w                
-      €
-       w€
-      ƒ
-       wƒ
-             v             w                             w             w             v             w                             w             w             v      Ÿ       w                 .symtab .strtab .shstrtab .interp .note.ABI-tag .note.gnu.build-id .gnu.hash .dynsym .dynstr .gnu.version .gnu.version_r .rela.dyn .rela.plt .init .text .fini .rodata .eh_frame_hdr .eh_frame .init_array .fini_array .jcr .dynamic .got .got.plt .data .bss .comment .debug_aranges .debug_info .debug_abbrev .debug_line .debug_str .debug_loc                                                                                   @                                          #             @                                          1             <@     <      $                              D   öÿÿo       `@     `                                   N             €@     €                                V             ˜@     ˜      q                             ^   ÿÿÿo       
-@     
-      B                            k   şÿÿo       P@     P      @                            z             @                                       „             ¨@     ¨      ¸                                       `
-@     `
-                                    ‰             €
-@     €
-      à                            ”             `@     `      @                             š              @            	                                            °@     °                                   ¨             Ğ@     Ğ      ¼                              ¶              @            ô                             À             ˆ#`     ˆ#                                    Ì             #`     #                                    Ø             ˜#`     ˜#                                    İ              #`      #      à                           æ             €%`     €%                                   ë             ˆ%`     ˆ%                                   ô             ˆ&`     ˆ&                                    ú              &`     ˜&      `                              ÿ      0               ˜&                                                        ©&      0                                                   Ù&      §                             #                     €2      »                             1                     ;4                                    =     0               Û7      V                            H                     1<      `                                                   ‘B      S                                                   èL      X      #   9                 	                      @X      s                                                            @                   @                   <@                   `@                   €@                   ˜@                   
-@                   P@                  	 @                  
- ¨@                   `
-@                   €
-@                   `@                    @                   °@                   Ğ@                    @                   ˆ#`                   #`                   ˜#`                    #`                   €%`                   ˆ%`                   ˆ&`                    &`                                                                                                                                                                            ñÿ                     ñÿ                    ñÿ                     ˜#`                   @             5     À@             H      @             ^      &`            m     #`             ”      @                   ˆ#`             ¿    ñÿ                Æ      '`     ÿ       Ï     Ú&`     
-       Ø     À&`            ç     È@                ñÿ                     €#@                 ˜#`                  ñÿ                     #`             +     #`             4     ˆ#`             G    ˆ%`             ]    €@            m                                          –                     ´                     É                     Ş                      ú     ˆ&`                 í@     }                            #    2@     F       ,                     ?    ˜&`             F                     [     @             a                     u                     ‹    j@            ˜    Œ@     .      ¤                     ¸                     Î                     å                     ø                       " @                                 ,    [@     ş      ?                     Q                     p    7@     [           ˆ&`             Œ                     Ÿ                     ³    ™@            »    x@     A      É                      Ø    ’@     g       ä                     ø   &`                 ù@     “                           &    °@            5                     J    Ë@            U    ğ@     ‰       e                     y     (`             ~    `@             …    ˜&`             ‘    Y@     ’      –    |@     ¶      Ÿ                     µ   @            ½    L@     ]       Í                     ß                      ó    º@     3                                ¹@               ˜&`             *                      D    ©@     ğ       T    `
-@             Z                      init.c crtstuff.c __JCR_LIST__ deregister_tm_clones register_tm_clones __do_global_dtors_aux completed.6719 __do_global_dtors_aux_fini_array_entry frame_dummy __frame_dummy_init_array_entry myar.c ret.3870 ret.3934 formatted.3939 __PRETTY_FUNCTION__.3997 __FRAME_END__ __JCR_END__ __init_array_end _DYNAMIC __init_array_start _GLOBAL_OFFSET_TABLE_ __libc_csu_fini free@@GLIBC_2.2.5 localtime@@GLIBC_2.2.5 __errno_location@@GLIBC_2.2.5 strncpy@@GLIBC_2.2.5 strncmp@@GLIBC_2.2.5 _ITM_deregisterTMCloneTable data_start delete_file puts@@GLIBC_2.2.5 fix_time write@@GLIBC_2.2.5 _edata opendir@@GLIBC_2.2.5 _fini strlen@@GLIBC_2.2.5 __lxstat@@GLIBC_2.2.5 extract_file append_file printf@@GLIBC_2.2.5 snprintf@@GLIBC_2.2.5 ftruncate@@GLIBC_2.2.5 lseek@@GLIBC_2.2.5 __assert_fail@@GLIBC_2.2.5 lstat close@@GLIBC_2.2.5 interpret_and_call read@@GLIBC_2.2.5 __libc_start_main@@GLIBC_2.2.5 create_archive __data_start atoll@@GLIBC_2.2.5 strcmp@@GLIBC_2.2.5 fix_str print_archive __gmon_start__ find_header strtol@@GLIBC_2.2.5 __dso_handle create_header memcpy@@GLIBC_2.14 _IO_stdin_used readdir@@GLIBC_2.2.5 append_all __libc_csu_init malloc@@GLIBC_2.2.5 _end _start __bss_start main fix_perm strftime@@GLIBC_2.2.5 __lstat check_isarchive open@@GLIBC_2.2.5 _Jv_RegisterClasses delete_bytes atoi@@GLIBC_2.2.5 timeout_add __TMC_END__ _ITM_registerTMCloneTable get_next_header _init __ctype_b_loc@@GLIBC_2.3 

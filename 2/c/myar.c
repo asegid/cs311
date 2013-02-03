@@ -22,7 +22,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define BLOCK_SIZE 8		// bytes
+#define BLOCK_SIZE 1024		// bytes
 #define PERM_SIZE sizeof("rwxrwxrwx")
 #define MAX_STR_SIZE 255
 #define TIME_SIZE 26
@@ -287,26 +287,22 @@ bool print_archive(int fd, bool verbose)
 
 	while (get_next_header(fd, tmp) != -1) {
 		if (verbose) {
-			// permissions
+			/* print additional file information */
 			printf("%s ", fix_perm(tmp->ar_mode));
-			// uid
 			printf("%s/",
 			       fix_str(tmp->ar_uid, sizeof(tmp->ar_uid),
 				       false));
-			//gid
-			printf("%s     ",
+			printf("%s ",
 			       fix_str(tmp->ar_gid, sizeof(tmp->ar_gid),
 				       false));
-			// file size in bytes
-			printf("%s ", fix_str(tmp->ar_size, sizeof(tmp->ar_size),
+			printf("%6s ", fix_str(tmp->ar_size, sizeof(tmp->ar_size),
 				       false));
-			// time
 			printf("%s ", fix_time(tmp->ar_date));
 		}
 		//printf ("-%s-", (char *)tmp);
+		/* always print file names */
 		printf("%s\n",
 		       fix_str(tmp->ar_name, sizeof(tmp->ar_name), true));
-		//memset(tmp, 0, sizeof(tmp));
 	}
 	free(tmp);
 
@@ -403,54 +399,73 @@ bool interpret_and_call(int fd, char key, int cnt, char **args)
 	return (ret);
 }
 
+bool check_args (int argc, char **argv) {
+
+	/* Syntax "myar key afile name ..." where afile=archive, key=opt */
+	if (argc < 3) {
+		printf("%d: Missing at least one argument\n", argc);
+		return (false);
+	}
+	if (strlen(argv[1]) != 2) {
+		printf("%s: Incorrectly sized key/option\n", argv[1]);
+		return (false);
+	}
+	if (argv[1][0] != '-') {
+		printf("%s: Invalid key (missing '-'?)\n", argv[1]);
+		return (false);
+	}
+	for (int i = 3; i < argc; ++i) {
+		if (strlen(argv[i]) > 15) {
+			printf("%s: Filename is too long.", argv[i]);
+			return (false);
+		}
+	}
+
+	return (true);
+}
+
 int main(int argc, char **argv)
 {
 	char *archive;
 	int fd;
 	char key;
 
-	/* Syntax "myar key afile name ..." where afile=archive, key=opt */
-	assert(argc >= 3);
-	assert(strlen(argv[1]) == 2);
-
-	assert(argv[1][0] == '-');
-
+	/* check input argument validity */
+	if (!check_args (argc, argv)) {
+		return (EXIT_FAILURE);
+	}
 	/* operation key */
 	key = argv[1][1];
-
-	// consider archive init function
 	/* archive should be second argument */
 	archive = argv[2];
-
 	/* open archive */
 	fd = open(archive, O_RDWR);
 	if (fd == -1) {
 		if (key == 'q') {
 			fd = create_archive(archive);
 			printf("%s: Creating archive\n", archive);
+		} else {
+			printf("%s: Error opening archive\n", archive);
+			return (EXIT_FAILURE);
 		}
 	}
-
 	/* check archive */
 	if (!check_isarchive(fd)) {
 		/* puke otherwise... */
-		printf("%s: Malformed or nonexistent archive\n", archive);
+		printf("%s: Malformed archive\n", archive);
 		return (EXIT_FAILURE);
 	}
-
 	/* Acquire lock */
-
 	/* handle function calls */
 	if (interpret_and_call(fd, key, argc, argv) == false) {
-		printf("Error occurred executing: %c", key);
+		printf("-%c: Error occurred during execution\n", key);
 	}
-
 	/* Unlock file */
-
 	errno = 0;
 	if (close(fd) == -1) {
-		printf("Error %d on archive close, data loss? \n", errno);
+		printf("%d: Error on archive close, data loss?\n", errno);
 		return (EXIT_FAILURE);
 	}
+
 	return (EXIT_SUCCESS);
 }
