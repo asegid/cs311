@@ -16,6 +16,7 @@
 #include <time.h>
 
 #include <ar.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -169,14 +170,17 @@ bool append_file(int fd, char *fname)
 	/* generate header, add to archive */
 	if (create_header(fname, hdr)) {
 		write(fd, (char *) hdr, sizeof(struct ar_hdr));
+	} else {
+		return (false);
 	}
-	// copy contents
+	/* copy contents */
 	file_fd = open(fname, O_RDONLY);
 	while ((num_read = read(file_fd, buf, BLOCK_SIZE)) > 0) {
 		if (write(fd, buf, num_read) != num_read) {
 			return (false);
 		}
 	}
+	/* catch errors */
 	errno = 0;
 	if (close(file_fd) == -1) {
 		printf("Error %d on closing %s. Check contents", errno,
@@ -315,9 +319,25 @@ bool timeout_add(int fd, time_t timeout)
 	return (false);
 }
 
-bool append_all(int fd)
+bool append_all(int fd, char *self)
 {
-	return (false);
+	DIR *cur_dir;
+	struct dirent *entry;
+
+	errno = 0;
+	cur_dir = opendir(".");
+
+	if (cur_dir == NULL) {
+		return (false);
+	}
+	while ((entry = readdir(cur_dir)) != NULL) {
+		if ((entry->d_type == DT_REG)
+		  &&(strcmp(entry->d_name, self) != 0)) {
+			append_file(fd, entry->d_name);
+		}
+	}
+
+	return (true);
 }
 
 bool interpret_and_call(int fd, char key, int cnt, char **args)
@@ -362,8 +382,8 @@ bool interpret_and_call(int fd, char key, int cnt, char **args)
 		break;
 	/* quickly append all "regular" files in the current dir */
 	case 'A':
-		if (cnt == 2) {
-			ret = append_all(fd);
+		if (cnt == 3) {
+			ret = append_all(fd, args[2]);
 		}
 		break;
 	/* for a timeout, add all modified files to the archive */
