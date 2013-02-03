@@ -223,8 +223,8 @@ bool delete_bytes(int fd, off_t start, off_t end)
 
 bool delete_file(int fd, char *fname)
 {
-	off_t file_start;
 	off_t file_end;
+	off_t file_start;
 	struct ar_hdr *tmp;
 
 	tmp = malloc(sizeof(struct ar_hdr));
@@ -234,17 +234,57 @@ bool delete_file(int fd, char *fname)
 	}
 	file_end =
 	    file_start + (off_t) (sizeof(struct ar_hdr) + atoll(tmp->ar_size));
+	free (tmp);
 
 	return (delete_bytes(fd, file_start, file_end));
 }
 
 bool extract_file(int fd, char *fname)
 {
-	// get file header from archive
-	// create new file with proper name
-	// change new file mode
-	// copy relevant lines over
-	// delete lines from archive
+	char buf[BLOCK_SIZE];
+	off_t content_start;
+	off_t cur;
+	off_t file_start;
+	off_t file_end;
+	int new_fd;
+	ssize_t num_read;
+	ssize_t read_size;
+	mode_t perm;
+	struct ar_hdr *tmp;
+
+	/* get file header from archive */
+	tmp = malloc(sizeof(struct ar_hdr));
+	file_start = find_header(fd, fname, tmp);
+	content_start = (file_start + sizeof(struct ar_hdr));
+	file_end = content_start + (off_t) (atoll(tmp->ar_size));
+
+	/* create new file with proper name and mode */
+	perm = (mode_t) strtol(tmp->ar_mode, NULL, 8);
+	new_fd = open(fix_str(tmp->ar_name, sizeof(tmp->ar_name), true),
+	              ( O_WRONLY | O_CREAT | O_EXCL ), perm);
+	if (new_fd == -1) {
+		return (false);
+	}
+
+	/* copy relevant lines over */
+	cur = lseek(fd, content_start, SEEK_SET);
+	read_size = BLOCK_SIZE;
+	if ((cur + read_size) > file_end) {
+		read_size = file_end - cur;
+	}
+	while ((num_read = read(fd, buf, read_size)) > 0) {
+		write(new_fd, buf, num_read);
+		cur += num_read;
+		if ((cur + read_size) > file_end) {
+			read_size = file_end - cur;
+		}
+	}
+
+	/* delete lines from archive */
+	delete_bytes(fd, file_start, file_end);
+	/* close new file */
+	close(new_fd);
+
 	return (true);
 }
 
