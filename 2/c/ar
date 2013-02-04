@@ -5,6 +5,9 @@ This is a file
 file2/          1359347349  1000  100   100644  15        `
 This is a file
 
+file3/          1359347350  1000  100   100644  15        `
+This is a file
+
 file4/          1359347351  1000  100   100644  15        `
 This is a file
 
@@ -13,10 +16,3 @@ This is a file
 
 file6/          1359347353  1000  100   100644  15        `
 This is a file
-
-file7/          1359347354  1000  100   100644  15        `
-This is a file
-
-file666/        1359519306  1000  100   100666  37        `
-I am a different file with 666 perms
-
