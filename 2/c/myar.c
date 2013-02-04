@@ -36,12 +36,15 @@ bool check_isarchive(int fd)
 
 	assert((fd >= 0));
 
-	if (lseek(fd, 0, SEEK_SET) != 0) return (false);
+	if (lseek(fd, 0, SEEK_SET) != 0)
+		return (false);
 
-	if (read(fd, buf, SARMAG) != SARMAG) return (false);
+	if (read(fd, buf, SARMAG) != SARMAG)
+		return (false);
 
 	/* Finally, can check to ensure strings are the same */
-	if (strncmp(buf, ARMAG, sizeof(buf)) != 0) return (false);
+	if (strncmp(buf, ARMAG, sizeof(buf)) != 0)
+		return (false);
 
 	return (true);
 }
@@ -59,18 +62,22 @@ off_t get_next_header(int fd, struct ar_hdr * out)
 	assert((fd >= 0) && (out != NULL));
 
 	/* Record header offset */
-	if ((hdr_offset = lseek(fd, 0, SEEK_CUR)) == -1) return (hdr_offset);
+	if ((hdr_offset = lseek(fd, 0, SEEK_CUR)) == -1)
+		return (hdr_offset);
 
 	/* Read and make sure we got everything */
-	if ((size_t)(read(fd, buf, sizeof(buf))) != sizeof(buf)) return (-1);
+	if ((size_t) (read(fd, buf, sizeof(buf))) != sizeof(buf))
+		return (-1);
 
 	/* Try filling the struct with a cast */
 	memcpy(out, buf, sizeof(*out));
 
 	/* advance past content */
 	arsize = atoll(out->ar_size);
-	if ((arsize % 2) == 1) ++arsize;
-	if(lseek(fd, arsize, SEEK_CUR) == -1) return (-1);
+	if ((arsize % 2) == 1)
+		++arsize;
+	if (lseek(fd, arsize, SEEK_CUR) == -1)
+		return (-1);
 
 	return (hdr_offset);
 }
@@ -85,7 +92,8 @@ char *fix_str(char *str, int len, bool backslash)
 
 	/* strip trailing whitespace (and backspaces if enabled) */
 	idx = (size_t) (len - 1);
-	while (isspace(str[idx]) || (backslash && (str[idx] == '/'))) --idx;
+	while (isspace(str[idx]) || (backslash && (str[idx] == '/')))
+		--idx;
 	strncpy(ret, str, idx + 1);
 	/* null terminate after valid, buffer could have other crap in it */
 	ret[idx + 1] = '\0';
@@ -100,12 +108,13 @@ int create_archive(char *fname)
 
 	assert(fname != NULL);
 
-	if ((fd = open (fname, flags, 0666)) == -1) return (fd);
+	if ((fd = open(fname, flags, 0666)) == -1)
+		return (fd);
 	/* If error writing to archive, try unlinking it and exit with error */
 	if (write(fd, ARMAG, SARMAG) != SARMAG) {
-			fd = -1;
-			unlink (fname);
-		}
+		fd = -1;
+		unlink(fname);
+	}
 
 	return (fd);
 }
@@ -117,9 +126,11 @@ off_t find_header(int fd, char *fname, struct ar_hdr * out)
 	assert((fd >= 0) && (fname != NULL) && (out != NULL));
 
 	do {
-		if ((hdr_offset = get_next_header(fd, out)) == -1) return (-1);
-	} while (strcmp(fix_str(out->ar_name, (int) sizeof(out->ar_name), true),
-			fname) != 0);
+		if ((hdr_offset = get_next_header(fd, out)) == -1)
+			return (-1);
+	} while (strcmp
+		 (fix_str(out->ar_name, (int) sizeof(out->ar_name), true),
+		  fname) != 0);
 
 	return (hdr_offset);
 }
@@ -129,11 +140,12 @@ void replace_chars(char *str, int len, char from, char to)
 	assert((str != NULL) && (len > 0));
 
 	for (int i = 0; i < len; ++i) {
-		if (str[i] == from) str[i] = to;
+		if (str[i] == from)
+			str[i] = to;
 	}
 }
 
-bool create_header(char *fname, struct ar_hdr * out)
+bool create_header(char *fname, struct ar_hdr *out)
 {
 	struct stat buf;
 
@@ -145,26 +157,26 @@ bool create_header(char *fname, struct ar_hdr * out)
 	/* fill ar_hdr struct */
 	snprintf(out->ar_name, sizeof(out->ar_name), "%s/", fname);
 	snprintf(out->ar_date, sizeof(out->ar_date), "%llu",
-			(long long unsigned int)buf.st_mtime);
+		 (long long unsigned int) buf.st_mtime);
 	snprintf(out->ar_uid, sizeof(out->ar_uid), "%llu",
-			(long long unsigned int)buf.st_uid);
+		 (long long unsigned int) buf.st_uid);
 	snprintf(out->ar_gid, sizeof(out->ar_gid), "%llu",
-			(long long unsigned int)buf.st_gid);
+		 (long long unsigned int) buf.st_gid);
 	snprintf(out->ar_mode, sizeof(out->ar_mode), "%llo",
-			(long long unsigned int)(buf.st_mode));
+		 (long long unsigned int) (buf.st_mode));
 	snprintf(out->ar_size, sizeof(out->ar_size), "%llu",
-			(long long unsigned int)buf.st_size);
+		 (long long unsigned int) buf.st_size);
 	memcpy(out->ar_fmag, ARFMAG, sizeof(out->ar_fmag));
 
 	/* strip newlines created by snprintf */
-	replace_chars((char *)out, sizeof(struct ar_hdr), '\0', ' ');
+	replace_chars((char *) out, sizeof(struct ar_hdr), '\0', ' ');
 
 	return (true);
 }
 
 bool append_file(int fd, char *fname)
 {
-	struct ar_hdr *hdr = malloc (sizeof (struct ar_hdr));
+	struct ar_hdr *hdr = malloc(sizeof(struct ar_hdr));
 	char buf[BLOCK_SIZE];
 	int file_fd;
 	ssize_t num_read;
@@ -173,10 +185,11 @@ bool append_file(int fd, char *fname)
 
 	/* seek to end of archive */
 	/* each archive file members begins on an even byte boundary */
-	if ((lseek(fd, 0, SEEK_END) % 2) == 1) write(fd, "\n", 1);
+	if ((lseek(fd, 0, SEEK_END) % 2) == 1)
+		write(fd, "\n", 1);
 
 	/* generate header, add to archive */
-	if (create_header(fname, hdr)){
+	if (create_header(fname, hdr)) {
 		write(fd, (char *) hdr, sizeof(struct ar_hdr));
 	} else {
 		return (false);
@@ -185,13 +198,15 @@ bool append_file(int fd, char *fname)
 	/* copy contents */
 	file_fd = open(fname, O_RDONLY);
 	while ((num_read = read(file_fd, buf, BLOCK_SIZE)) > 0) {
-		if (write(fd, buf, num_read) != num_read) return (false);
+		if (write(fd, buf, num_read) != num_read)
+			return (false);
 	}
 
 	/* catch errors */
 	errno = 0;
 	if (close(file_fd) == -1) {
-		printf("Error %d on closing %s. Check contents", errno, fname);
+		printf("Error %d on closing %s. Check contents", errno,
+		       fname);
 		return (false);
 	}
 
@@ -217,7 +232,8 @@ bool delete_bytes(int fd, off_t start, off_t end)
 		lseek(fd, cur - num_read - size - 1, SEEK_SET);
 
 		/* if failure to write, archive may be broken */
-		if (write(fd, buf, num_read) != num_read) return (false);
+		if (write(fd, buf, num_read) != num_read)
+			return (false);
 
 		/* jump forward to read again */
 		lseek(fd, cur, SEEK_SET);
@@ -244,8 +260,9 @@ bool delete_file(int fd, char *fname)
 		return (false);
 	}
 	file_end =
-	    file_start + (off_t) (sizeof(struct ar_hdr) + atoll(tmp->ar_size));
-	free (tmp);
+	    file_start + (off_t) (sizeof(struct ar_hdr) +
+				  atoll(tmp->ar_size));
+	free(tmp);
 
 	return (delete_bytes(fd, file_start, file_end));
 }
@@ -275,7 +292,7 @@ bool extract_file(int fd, char *fname)
 	perm = (mode_t) strtol(tmp->ar_mode, NULL, 8);
 
 	new_fd = open(fix_str(tmp->ar_name, sizeof(tmp->ar_name), true),
-	              ( O_WRONLY | O_CREAT | O_EXCL ), perm);
+		      (O_WRONLY | O_CREAT | O_EXCL), perm);
 	if (new_fd == -1) {
 		return (false);
 	}
@@ -310,18 +327,18 @@ char *fix_perm(char *octal)
 
 	mode_t perm = (mode_t) strtol(octal, NULL, 8);
 	snprintf(ret, PERM_SIZE, "%c%c%c%c%c%c%c%c%c",
-	         ((perm & S_IRUSR) ? 'r' : '-'),
-	         ((perm & S_IWUSR) ? 'w' : '-'),
-	         ((perm & S_IXUSR) ? ((perm & S_ISUID) ? 's' : 'x') :
-	                             ((perm & S_ISUID) ? 'S' : '-')),
-	         ((perm & S_IRGRP) ? 'r' : '-'),
-	         ((perm & S_IWGRP) ? 'w' : '-'),
-	         ((perm & S_IXGRP) ? ((perm & S_ISGID) ? 's' : 'x') :
-	                             ((perm & S_ISGID) ? 'S' : '-')),
-	         ((perm & S_IROTH) ? 'r' : '-'),
-	         ((perm & S_IWOTH) ? 'w' : '-'),
-	         ((perm & S_IXOTH) ? ((perm & S_ISVTX) ? 't' : 'x') :
-	                             ((perm & S_ISVTX) ? 'S' : '-')));
+		 ((perm & S_IRUSR) ? 'r' : '-'),
+		 ((perm & S_IWUSR) ? 'w' : '-'),
+		 ((perm & S_IXUSR) ? ((perm & S_ISUID) ? 's' : 'x') :
+		  ((perm & S_ISUID) ? 'S' : '-')),
+		 ((perm & S_IRGRP) ? 'r' : '-'),
+		 ((perm & S_IWGRP) ? 'w' : '-'),
+		 ((perm & S_IXGRP) ? ((perm & S_ISGID) ? 's' : 'x') :
+		  ((perm & S_ISGID) ? 'S' : '-')),
+		 ((perm & S_IROTH) ? 'r' : '-'),
+		 ((perm & S_IWOTH) ? 'w' : '-'),
+		 ((perm & S_IXOTH) ? ((perm & S_ISVTX) ? 't' : 'x') :
+		  ((perm & S_ISVTX) ? 'S' : '-')));
 
 	return (ret);
 }
@@ -355,7 +372,8 @@ bool print_archive(int fd, bool verbose)
 			printf("%s ",
 			       fix_str(tmp->ar_gid, sizeof(tmp->ar_gid),
 				       false));
-			printf("%6s ", fix_str(tmp->ar_size, sizeof(tmp->ar_size),
+			printf("%6s ",
+			       fix_str(tmp->ar_size, sizeof(tmp->ar_size),
 				       false));
 			printf("%s ", fix_time(tmp->ar_date));
 		}
@@ -391,7 +409,7 @@ bool append_all(int fd, char *self)
 	}
 	while ((entry = readdir(cur_dir)) != NULL) {
 		if ((entry->d_type == DT_REG)
-		  &&(strcmp(entry->d_name, self) != 0)) {
+		    && (strcmp(entry->d_name, self) != 0)) {
 			append_file(fd, entry->d_name);
 		}
 	}
@@ -402,13 +420,13 @@ bool append_all(int fd, char *self)
 void usage(void)
 {
 	printf("\nCS 311 Project 2: UNIX File I/O\n"
-	       "-h  print this help\n"\
-	       "-q  quickly append named files to archive\n"\
-	       "-x  extract named files\n"\
-	       "-t  print a concise table of contents of the archive\n"\
-	       "-v  print a verbose table of contents of the archive\n"\
-	       "-d  delete named files from archive\n"\
-	       "-A  quickly append all ``regular'' files in the current dir\n"\
+	       "-h  print this help\n"
+	       "-q  quickly append named files to archive\n"
+	       "-x  extract named files\n"
+	       "-t  print a concise table of contents of the archive\n"
+	       "-v  print a verbose table of contents of the archive\n"
+	       "-d  delete named files from archive\n"
+	       "-A  quickly append all ``regular'' files in the current dir\n"
 	       "-w  for a given timeout, add all modified files to archive\n");
 
 }
@@ -420,18 +438,18 @@ bool interpret_and_call(int fd, char key, int cnt, char **args)
 	assert((fd >= 0) && (cnt > 0) && (args != NULL));
 
 	switch (key) {
-	/* quickly append named files to archive */
+		/* quickly append named files to archive */
 	case 'h':
 		break;
 	case 'q':
 		if (cnt >= 3) {
 			ret = true;
 			for (int i = 3; i < cnt; ++i) {
-			ret &= append_file(fd, args[i]);
+				ret &= append_file(fd, args[i]);
 			}
 		}
 		break;
-	/* extract named files from archive */
+		/* extract named files from archive */
 	case 'x':
 		if (cnt >= 3) {
 			ret = true;
@@ -440,15 +458,15 @@ bool interpret_and_call(int fd, char key, int cnt, char **args)
 			}
 		}
 		break;
-	/* print a concise table of contents of archive */
+		/* print a concise table of contents of archive */
 	case 't':
 		ret = print_archive(fd, false);
 		break;
-	/* print a verbose table of contents of archive */
+		/* print a verbose table of contents of archive */
 	case 'v':
 		ret = print_archive(fd, true);
 		break;
-	/* delete named files from archive */
+		/* delete named files from archive */
 	case 'd':
 		if (cnt >= 3) {
 			ret = true;
@@ -457,20 +475,20 @@ bool interpret_and_call(int fd, char key, int cnt, char **args)
 			}
 		}
 		break;
-	/* quickly append all "regular" files in the current dir */
+		/* quickly append all "regular" files in the current dir */
 	case 'A':
 		if (cnt == 3) {
 			ret = append_all(fd, args[2]);
 		}
 		break;
-	/* for a timeout, add all modified files to the archive */
+		/* for a timeout, add all modified files to the archive */
 	case 'w':
 		//bonus
 		if (cnt == 4) {
 			ret = timeout_add(fd, (time_t) atoi(args[3]));
 		}
 		break;
-	/* unsupported operation */
+		/* unsupported operation */
 	default:
 		printf("invalid option -- '%c'\n", key);
 		ret = false;
@@ -480,7 +498,7 @@ bool interpret_and_call(int fd, char key, int cnt, char **args)
 	return (ret);
 }
 
-bool check_args (int argc, char **argv)
+bool check_args(int argc, char **argv)
 {
 	assert((argc > 0) && (argv != NULL));
 
@@ -495,7 +513,8 @@ bool check_args (int argc, char **argv)
 	}
 	if (argc < 3) {
 		if (argv[1][1] != 'h') {
-			printf("%d: Missing at least one argument\n", argc);
+			printf("%d: Missing at least one argument\n",
+			       argc);
 		}
 		return (false);
 	}
@@ -516,7 +535,7 @@ int main(int argc, char **argv)
 	char key;
 
 	/* check input argument validity */
-	if (!check_args (argc, argv)) {
+	if (!check_args(argc, argv)) {
 		usage();
 		return (EXIT_FAILURE);
 	}
