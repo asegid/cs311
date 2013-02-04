@@ -28,22 +28,20 @@
 #define TIME_SIZE 26
 #define EPOCH_SIZE 10
 
-/*
- * use lstat instead of stat!
- * almost all code for this project is in textbook
- * 71 while numRead read section is helpful
- */
 
 /* must be run before get_next_header */
 bool check_isarchive(int fd)
 {
 	char buf[SARMAG];
 
-	lseek(fd, 0, SEEK_SET);
-	read(fd, buf, SARMAG);
-	if (strncmp(buf, ARMAG, sizeof(buf)) != 0) {
-		return (false);
-	}
+	assert((fd >= 0));
+
+	if (lseek(fd, 0, SEEK_SET) != 0) return (false);
+
+	if (read(fd, buf, SARMAG) != SARMAG) return (false);
+
+	/* Finally, can check to ensure strings are the same */
+	if (strncmp(buf, ARMAG, sizeof(buf)) != 0) return (false);
 
 	return (true);
 }
@@ -55,38 +53,39 @@ bool check_isarchive(int fd)
 off_t get_next_header(int fd, struct ar_hdr * out)
 {
 	char buf[sizeof(struct ar_hdr)];
-	ssize_t was_read;
-	off_t offset;
+	off_t hdr_offset;
+	off_t arsize;
+
+	assert((fd >= 0) && (out != NULL));
 
 	/* Record header offset */
-	offset = lseek(fd, 0, SEEK_CUR);
-	/* Read and make sure we got everything */
-	was_read = read(fd, buf, sizeof(struct ar_hdr));
-	if (was_read == (sizeof(struct ar_hdr))) {
-		/* Try filling the struct with a cast */
-		memcpy(out, buf, sizeof(*out));
-		/* advance past content */
-		if ((lseek(fd, atoi(out->ar_size), SEEK_CUR) % 2) == 1) {
-			/* ensure an even byte boundary */
-			lseek(fd, 1, SEEK_CUR);
-		}
-	} else {
-		offset = (off_t) (-1);
-	}
+	if ((hdr_offset = lseek(fd, 0, SEEK_CUR)) == -1) return (hdr_offset);
 
-	return (offset);
+	/* Read and make sure we got everything */
+	if ((size_t)(read(fd, buf, sizeof(buf))) != sizeof(buf)) return (-1);
+
+	/* Try filling the struct with a cast */
+	memcpy(out, buf, sizeof(*out));
+
+	/* advance past content */
+	arsize = atoll(out->ar_size);
+	if ((arsize % 2) == 1) ++arsize;
+	if(lseek(fd, arsize, SEEK_CUR) == -1) return (-1);
+
+	return (hdr_offset);
 }
 
 /* strip trailing whitespace, if backslash then turn into valid fname */
 char *fix_str(char *str, int len, bool backslash)
 {
-	int idx = len - 1;
+	size_t idx;
 	static char ret[MAX_STR_SIZE];
 
+	assert((str != NULL) && (len > 0));
+
 	/* strip trailing whitespace (and backspaces if enabled) */
-	while (isspace(str[idx]) || (backslash && (str[idx] == '/'))) {
-		--idx;
-	}
+	idx = (size_t) (len - 1);
+	while (isspace(str[idx]) || (backslash && (str[idx] == '/'))) --idx;
 	strncpy(ret, str, idx + 1);
 	/* null terminate after valid, buffer could have other crap in it */
 	ret[idx + 1] = '\0';
@@ -96,17 +95,17 @@ char *fix_str(char *str, int len, bool backslash)
 
 int create_archive(char *fname)
 {
-
 	int fd;
-	ssize_t ret;
+	int flags = (O_RDWR | O_CREAT | O_EXCL);
 
-	fd = open (fname, O_RDWR | O_CREAT | O_EXCL, 0666);
-	if (fd != -1) {
-	ret = write(fd, ARMAG, SARMAG);
-		if (ret != SARMAG) {
+	assert(fname != NULL);
+
+	if ((fd = open (fname, flags, 0666)) == -1) return (fd);
+	/* If error writing to archive, try unlinking it and exit with error */
+	if (write(fd, ARMAG, SARMAG) != SARMAG) {
 			fd = -1;
+			unlink (fname);
 		}
-	}
 
 	return (fd);
 }
@@ -115,20 +114,30 @@ off_t find_header(int fd, char *fname, struct ar_hdr * out)
 {
 	off_t hdr_offset;
 
+	assert((fd >= 0) && (fname != NULL) && (out != NULL));
+
 	do {
-		hdr_offset = get_next_header(fd, out);
-		if (hdr_offset == -1) {
-			return (-1);
-		}
-	} while (strcmp(fix_str(out->ar_name, sizeof(out->ar_name), true),
+		if ((hdr_offset = get_next_header(fd, out)) == -1) return (-1);
+	} while (strcmp(fix_str(out->ar_name, (int) sizeof(out->ar_name), true),
 			fname) != 0);
 
 	return (hdr_offset);
 }
 
+void replace_chars(char *str, int len, char from, char to)
+{
+	assert((str != NULL) && (len > 0));
+
+	for (int i = 0; i < len; ++i) {
+		if (str[i] == from) str[i] = to;
+	}
+}
+
 bool create_header(char *fname, struct ar_hdr * out)
 {
 	struct stat buf;
+
+	assert((fname != NULL) && (out != NULL));
 
 	if (lstat(fname, &buf) == -1) {
 		return (false);
@@ -146,12 +155,10 @@ bool create_header(char *fname, struct ar_hdr * out)
 	snprintf(out->ar_size, sizeof(out->ar_size), "%llu",
 			(long long unsigned int)buf.st_size);
 	memcpy(out->ar_fmag, ARFMAG, sizeof(out->ar_fmag));
+
 	/* strip newlines created by snprintf */
-	for (int i = 0; i < sizeof(struct ar_hdr); ++i) {
-		if (((char *)out)[i] == '\0') {
-			((char *)out)[i] = ' ';
-		}
-	}
+	replace_chars((char *)out, sizeof(struct ar_hdr), '\0', ' ');
+
 	return (true);
 }
 
@@ -162,29 +169,30 @@ bool append_file(int fd, char *fname)
 	int file_fd;
 	ssize_t num_read;
 
+	assert((fd >= 0) && (fname != NULL));
+
 	/* seek to end of archive */
 	/* each archive file members begins on an even byte boundary */
-	if ((lseek(fd, 0, SEEK_END) % 2) == 1) {
-		write(fd, "\n", 1);
-	}
+	if ((lseek(fd, 0, SEEK_END) % 2) == 1) write(fd, "\n", 1);
+
 	/* generate header, add to archive */
-	if (create_header(fname, hdr)) {
+	if (create_header(fname, hdr)){
 		write(fd, (char *) hdr, sizeof(struct ar_hdr));
 	} else {
 		return (false);
 	}
+
 	/* copy contents */
 	file_fd = open(fname, O_RDONLY);
 	while ((num_read = read(file_fd, buf, BLOCK_SIZE)) > 0) {
-		if (write(fd, buf, num_read) != num_read) {
-			return (false);
-		}
+		if (write(fd, buf, num_read) != num_read) return (false);
 	}
+
 	/* catch errors */
 	errno = 0;
 	if (close(file_fd) == -1) {
-		printf("Error %d on closing %s. Check contents", errno,
-		       fname);
+		printf("Error %d on closing %s. Check contents", errno, fname);
+		return (false);
 	}
 
 	return (true);
@@ -198,22 +206,23 @@ bool delete_bytes(int fd, off_t start, off_t end)
 	ssize_t num_read;
 	off_t size = end - start;
 
-	if ((size <= 0) || (fd < 0)) {
-		return (false);
-	}
+	assert((size > 0) && (fd >= 0));
+
 	/* set file offset to end of file to delete */
 	lseek(fd, end + 1, SEEK_SET);
 	while ((num_read = read(fd, buf, BLOCK_SIZE)) > 0) {
 		cur = lseek(fd, 0, SEEK_CUR);
+
 		/* jump back to over write previous block */
 		lseek(fd, cur - num_read - size - 1, SEEK_SET);
+
 		/* if failure to write, archive may be broken */
-		if (write(fd, buf, num_read) != num_read) {
-			return (false);
-		}
+		if (write(fd, buf, num_read) != num_read) return (false);
+
 		/* jump forward to read again */
 		lseek(fd, cur, SEEK_SET);
 	}
+
 	/* truncate archive */
 	new_end = lseek(fd, 0, SEEK_END) - size - 1;
 	ftruncate(fd, new_end);
@@ -226,6 +235,8 @@ bool delete_file(int fd, char *fname)
 	off_t file_end;
 	off_t file_start;
 	struct ar_hdr *tmp;
+
+	assert((fd >= 0) && (fname != NULL));
 
 	tmp = malloc(sizeof(struct ar_hdr));
 	file_start = find_header(fd, fname, tmp);
@@ -251,6 +262,8 @@ bool extract_file(int fd, char *fname)
 	ssize_t read_size;
 	mode_t perm;
 	struct ar_hdr *tmp;
+
+	assert((fd >= 0) && (fname != NULL));
 
 	/* get file header from archive */
 	tmp = malloc(sizeof(struct ar_hdr));
@@ -292,6 +305,8 @@ char *fix_perm(char *octal)
 {
 	static char ret[PERM_SIZE];
 
+	assert((octal != NULL));
+
 	mode_t perm = (mode_t) strtol(octal, NULL, 8);
 	snprintf(ret, PERM_SIZE, "%c%c%c%c%c%c%c%c%c",
 	         ((perm & S_IRUSR) ? 'r' : '-'),
@@ -315,6 +330,8 @@ char *fix_time(char *epoch)
 	static char formatted[TIME_SIZE];
 	time_t systime;
 
+	assert((epoch != NULL));
+
 	systime = atoll(epoch);
 	strftime(formatted, TIME_SIZE, "%b %d %R %Y", localtime(&systime));
 
@@ -324,6 +341,8 @@ char *fix_time(char *epoch)
 bool print_archive(int fd, bool verbose)
 {
 	struct ar_hdr *tmp = malloc(sizeof(struct ar_hdr));
+
+	assert((fd >= 0));
 
 	while (get_next_header(fd, tmp) != -1) {
 		if (verbose) {
@@ -351,6 +370,7 @@ bool print_archive(int fd, bool verbose)
 
 bool timeout_add(int fd, time_t timeout)
 {
+	assert((fd >= 0));
 
 	return (false);
 }
@@ -359,6 +379,8 @@ bool append_all(int fd, char *self)
 {
 	DIR *cur_dir;
 	struct dirent *entry;
+
+	assert((fd >= 0) && (self != NULL));
 
 	errno = 0;
 	cur_dir = opendir(".");
@@ -379,6 +401,8 @@ bool append_all(int fd, char *self)
 bool interpret_and_call(int fd, char key, int cnt, char **args)
 {
 	bool ret = false;
+
+	assert((fd >= 0) && (cnt > 0) && (args != NULL));
 
 	switch (key) {
 	/* quickly append named files to archive */
@@ -440,6 +464,8 @@ bool interpret_and_call(int fd, char key, int cnt, char **args)
 }
 
 bool check_args (int argc, char **argv) {
+
+	assert((argc > 0) && (argv != NULL));
 
 	/* Syntax "myar key afile name ..." where afile=archive, key=opt */
 	if (argc < 3) {
