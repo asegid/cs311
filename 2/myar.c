@@ -1,9 +1,11 @@
 /*
- *      Author:  Jordan Bayles (baylesj), baylesj@engr.orst.edu
- *     Created:  01/27/2013 07:44:06 PM
- *    Filename:  myar.c
+ *         Author:  Jordan Bayles (baylesj), baylesj@engr.orst.edu
+ *        Created:  01/27/2013 07:44:06 PM
+ *       Filename:  myar.c
  *
- * Description:  Implementation of UNIX archive "ar" utility
+ *  Collaboration:  Worked with Meghan Gorman, discussing algorithms, code structure
+ *                  and implementation details.
+ *    Description:  Implementation of UNIX archive "ar" utility
  */
 
 #include <assert.h>
@@ -18,15 +20,19 @@
 #include <ar.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <sys/inotify.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-#define BLOCK_SIZE 1024		// bytes
-#define PERM_SIZE sizeof("rwxrwxrwx")
-#define MAX_STR_SIZE 255
-#define TIME_SIZE 26
-#define EPOCH_SIZE 10
+#define BLOCK_SZ 1024		// bytes
+#define CUR_DUR "."
+#define EPOCH_SZ 10
+#define INOTIFY_EVNT_SZ (sizeof (struct inotify_event))
+#define INOTIFY_BUF_SZ (1024 * (INOTIFY_EVNT_SZ + 16))
+#define MAX_STR_SZ 255
+#define PERM_SZ sizeof("rwxrwxrwx")
+#define TIME_SZ 26
 
 
 /* must be run before get_next_header */
@@ -86,7 +92,7 @@ off_t get_next_header(int fd, struct ar_hdr * out)
 char *fix_str(char *str, int len, bool backslash)
 {
 	size_t idx;
-	static char ret[MAX_STR_SIZE];
+	static char ret[MAX_STR_SZ];
 
 	assert((str != NULL) && (len > 0));
 
@@ -177,7 +183,7 @@ bool create_header(char *fname, struct ar_hdr *out)
 bool append_file(int fd, char *fname)
 {
 	struct ar_hdr *hdr = malloc(sizeof(struct ar_hdr));
-	char buf[BLOCK_SIZE];
+	char buf[BLOCK_SZ];
 	int file_fd;
 	ssize_t num_read;
 
@@ -197,7 +203,7 @@ bool append_file(int fd, char *fname)
 
 	/* copy contents */
 	file_fd = open(fname, O_RDONLY);
-	while ((num_read = read(file_fd, buf, BLOCK_SIZE)) > 0) {
+	while ((num_read = read(file_fd, buf, BLOCK_SZ)) > 0) {
 		if (write(fd, buf, num_read) != num_read)
 			return (false);
 	}
@@ -215,7 +221,7 @@ bool append_file(int fd, char *fname)
 
 bool delete_bytes(int fd, off_t start, off_t end)
 {
-	char buf[BLOCK_SIZE];
+	char buf[BLOCK_SZ];
 	off_t cur;
 	off_t new_end;
 	ssize_t num_read;
@@ -225,7 +231,7 @@ bool delete_bytes(int fd, off_t start, off_t end)
 
 	/* set file offset to end of file to delete */
 	lseek(fd, end + 1, SEEK_SET);
-	while ((num_read = read(fd, buf, BLOCK_SIZE)) > 0) {
+	while ((num_read = read(fd, buf, BLOCK_SZ)) > 0) {
 		cur = lseek(fd, 0, SEEK_CUR);
 
 		/* jump back to over write previous block */
@@ -264,7 +270,7 @@ bool delete_file(int fd, char *fname)
 
 bool extract_file(int fd, char *fname)
 {
-	char buf[BLOCK_SIZE];
+	char buf[BLOCK_SZ];
 	off_t content_start;
 	off_t cur;
 	off_t file_start;
@@ -279,7 +285,8 @@ bool extract_file(int fd, char *fname)
 
 	/* get file header from archive */
 	tmp = malloc(sizeof(struct ar_hdr));
-	if ((file_start = find_header(fd, fname, tmp)) < 0) return (false);
+	if ((file_start = find_header(fd, fname, tmp)) < 0)
+		return (false);
 	content_start = (file_start + sizeof(struct ar_hdr));
 	file_end = content_start + (off_t) (atoll(tmp->ar_size));
 
@@ -287,17 +294,16 @@ bool extract_file(int fd, char *fname)
 	perm = (mode_t) strtol(tmp->ar_mode, NULL, 8);
 
 	new_fd = open(fix_str(tmp->ar_name, sizeof(tmp->ar_name), true),
-		      (O_WRONLY | O_CREAT | O_EXCL), perm);
-	if (new_fd == -1) {
+	              (O_WRONLY | O_CREAT | O_EXCL), perm);
+	if (new_fd == -1)
 		return (false);
-	}
 
 	/* copy relevant lines over */
 	cur = lseek(fd, content_start, SEEK_SET);
-	read_size = BLOCK_SIZE;
-	if ((cur + read_size) > file_end) {
+	read_size = BLOCK_SZ;
+	if ((cur + read_size) > file_end)
 		read_size = file_end - cur;
-	}
+
 	while ((num_read = read(fd, buf, read_size)) > 0) {
 		write(new_fd, buf, num_read);
 		cur += num_read;
@@ -316,12 +322,12 @@ bool extract_file(int fd, char *fname)
 
 char *fix_perm(char *octal)
 {
-	static char ret[PERM_SIZE];
+	static char ret[PERM_SZ];
 
 	assert((octal != NULL));
 
 	mode_t perm = (mode_t) strtol(octal, NULL, 8);
-	snprintf(ret, PERM_SIZE, "%c%c%c%c%c%c%c%c%c",
+	snprintf(ret, PERM_SZ, "%c%c%c%c%c%c%c%c%c",
 		 ((perm & S_IRUSR) ? 'r' : '-'),
 		 ((perm & S_IWUSR) ? 'w' : '-'),
 		 ((perm & S_IXUSR) ? ((perm & S_ISUID) ? 's' : 'x') :
@@ -340,13 +346,13 @@ char *fix_perm(char *octal)
 
 char *fix_time(char *epoch)
 {
-	static char formatted[TIME_SIZE];
+	static char formatted[TIME_SZ];
 	time_t systime;
 
 	assert((epoch != NULL));
 
 	systime = atoll(epoch);
-	strftime(formatted, TIME_SIZE, "%b %d %R %Y", localtime(&systime));
+	strftime(formatted, TIME_SZ, "%b %d %R %Y", localtime(&systime));
 
 	return (formatted);
 }
@@ -382,13 +388,6 @@ bool print_archive(int fd, bool verbose)
 	return (true);
 }
 
-bool timeout_add(int fd, time_t timeout)
-{
-	assert((fd >= 0));
-
-	return (false);
-}
-
 bool append_all(int fd, char *self)
 {
 	DIR *cur_dir;
@@ -397,7 +396,7 @@ bool append_all(int fd, char *self)
 	assert((fd >= 0) && (self != NULL));
 
 	errno = 0;
-	cur_dir = opendir(".");
+	cur_dir = opendir(CUR_DUR);
 
 	if (cur_dir == NULL) {
 		return (false);
@@ -412,9 +411,53 @@ bool append_all(int fd, char *self)
 	return (true);
 }
 
+bool append_timeout(int fd, char *self, int timeout)
+{
+	time_t beg_time;
+	char buf[INOTIFY_BUF_SZ];
+	int buf_idx;
+	time_t cur_time;
+	struct inotify_event *evnt;
+	int flags;
+	int n_fd;
+	int w_fd;
+	ssize_t was_read;
+
+	if ((n_fd = inotify_init()) == -1)
+		return (false);
+	if ((w_fd = inotify_add_watch(n_fd, CUR_DUR, IN_MODIFY)) == -1)
+		return (false);
+
+	/* Set file descriptor to non-blocking */
+	flags = fcntl(n_fd, F_GETFL);
+	if (fcntl(n_fd, F_SETFL, flags | O_NONBLOCK) == -1)
+		return (false);
+
+	beg_time = time(NULL);
+	cur_time = beg_time;
+	while (cur_time < (beg_time + timeout)) {
+		
+		if ((was_read = read(n_fd, buf, INOTIFY_BUF_SZ)) == -1)
+			continue;
+		buf_idx = 0;
+		while (buf_idx < was_read) {
+			evnt = (struct inotify_event *) &buf[buf_idx];
+			if (strcmp(evnt->name, self) != 0) {
+				append_file(fd, evnt->name);
+				printf("%s: Changed, added to %s\n",
+				       evnt->name, self);
+			}
+			buf_idx += INOTIFY_EVNT_SZ + evnt->len;
+		}
+	}
+
+	return (false);
+}
+
 void usage(void)
 {
 	printf("\nCS 311 Project 2: UNIX File I/O\n"
+	       "usage: prog key <archive> <files>\n"
 	       "-h  print this help\n"
 	       "-q  quickly append named files to archive\n"
 	       "-x  extract named files\n"
@@ -422,8 +465,7 @@ void usage(void)
 	       "-v  print a verbose table of contents of the archive\n"
 	       "-d  delete named files from archive\n"
 	       "-A  quickly append all ``regular'' files in the current dir\n"
-	       "-w  for a given timeout, add all modified files to archive\n");
-
+	       "-w  <archive> <timeout> add changed files before timeout\n");
 }
 
 bool interpret_and_call(int fd, char key, int cnt, char **args)
@@ -433,57 +475,51 @@ bool interpret_and_call(int fd, char key, int cnt, char **args)
 	assert((fd >= 0) && (cnt > 0) && (args != NULL));
 
 	switch (key) {
-		/* quickly append named files to archive */
 	case 'h':
 		break;
+	/* quickly append named files to archive */
 	case 'q':
 		if (cnt >= 3) {
 			ret = true;
-			for (int i = 3; i < cnt; ++i) {
+			for (int i = 3; i < cnt; ++i)
 				ret &= append_file(fd, args[i]);
-			}
 		}
 		break;
-		/* extract named files from archive */
+	/* extract named files from archive */
 	case 'x':
 		if (cnt >= 3) {
 			ret = true;
-			for (int i = 3; i < cnt; ++i) {
+			for (int i = 3; i < cnt; ++i)
 				ret &= extract_file(fd, args[i]);
-			}
 		}
 		break;
-		/* print a concise table of contents of archive */
+	/* print a concise table of contents of archive */
 	case 't':
 		ret = print_archive(fd, false);
 		break;
-		/* print a verbose table of contents of archive */
+	/* print a verbose table of contents of archive */
 	case 'v':
 		ret = print_archive(fd, true);
 		break;
-		/* delete named files from archive */
+	/* delete named files from archive */
 	case 'd':
 		if (cnt >= 3) {
 			ret = true;
-			for (int i = 3; i < cnt; ++i) {
+			for (int i = 3; i < cnt; ++i)
 				ret &= delete_file(fd, args[i]);
-			}
 		}
 		break;
-		/* quickly append all "regular" files in the current dir */
+	/* quickly append all "regular" files in the current dir */
 	case 'A':
-		if (cnt == 3) {
+		if (cnt == 3)
 			ret = append_all(fd, args[2]);
-		}
 		break;
-		/* for a timeout, add all modified files to the archive */
+	/* append files changed while running */
 	case 'w':
-		//bonus
-		if (cnt == 4) {
-			ret = timeout_add(fd, (time_t) atoi(args[3]));
-		}
+		if (cnt == 4)
+			ret = append_timeout(fd, args[2], atoi(args[3]));
 		break;
-		/* unsupported operation */
+	/* unsupported operation */
 	default:
 		printf("invalid option -- '%c'\n", key);
 		ret = false;
@@ -498,19 +534,15 @@ bool check_args(int argc, char **argv)
 	assert((argc > 0) && (argv != NULL));
 
 	/* Syntax "myar key afile name ..." where afile=archive, key=opt */
+	if (argc < 3) {
+		return (false);
+	}
 	if (strlen(argv[1]) != 2) {
 		printf("%s: Incorrectly sized key/option\n", argv[1]);
 		return (false);
 	}
 	if (argv[1][0] != '-') {
 		printf("%s: Invalid key (missing '-'?)\n", argv[1]);
-		return (false);
-	}
-	if (argc < 3) {
-		if (argv[1][1] != 'h') {
-			printf("%d: Missing at least one argument\n",
-			       argc);
-		}
 		return (false);
 	}
 	for (int i = 3; i < argc; ++i) {
@@ -558,7 +590,6 @@ int main(int argc, char **argv)
 		return (EXIT_FAILURE);
 	}
 
-	/* Acquire lock */
 	/* handle function calls */
 	if (interpret_and_call(fd, key, argc, argv) == false) {
 		printf("-%c: Error occurred during execution\n", key);

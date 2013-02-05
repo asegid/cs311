@@ -1,4 +1,4 @@
-This is pdfTeXk, Version 3.141592-1.40.3 (Web2C 7.5.6) (format=latex 2012.7.12)  4 FEB 2013 17:57
+This is pdfTeXk, Version 3.141592-1.40.3 (Web2C 7.5.6) (format=latex 2012.7.12)  4 FEB 2013 22:04
 entering extended mode
  %&-line parsing enabled.
 **writeup.tex
@@ -316,17 +316,22 @@ LaTeX Info: Redefining \pageref on input line 48.
 \openout4 = `writeup.out'.
 
 
+Overfull \hbox (3.72528pt too wide) in paragraph at lines 62--66
+[]\OT1/cmr/m/n/10 The ma-jor sub-func-tion (not re-lated to archive in-tegrity 
+or con-ver-sion) that was able to be used mul-ti-ple times was []\OT1/cmtt/m/n/
+10 delete_file\OT1/cmr/m/n/10 .
+ []
 
-Package hyperref Warning: Rerun to get /PageLabels entry.
+[1
 
-(./writeup.aux) ) 
+] (./writeup.aux) ) 
 Here is how much of TeX's memory you used:
- 4395 strings out of 256217
- 58953 string characters out of 1917095
- 121817 words of memory out of 1500000
- 7656 multiletter control sequences out of 10000+200000
- 3640 words of font info for 14 fonts, out of 1200000 for 2000
+ 4423 strings out of 256217
+ 59379 string characters out of 1917095
+ 125327 words of memory out of 1500000
+ 7680 multiletter control sequences out of 10000+200000
+ 5018 words of font info for 19 fonts, out of 1200000 for 2000
  645 hyphenation exceptions out of 8191
- 27i,1n,24p,222b,203s stack positions out of 5000i,500n,6000p,200000b,15000s
+ 27i,6n,36p,222b,353s stack positions out of 5000i,500n,6000p,200000b,15000s
 
-No pages of output.
+Output written on writeup.dvi (1 page, 7596 bytes).
