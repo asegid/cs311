@@ -1,6 +1,6 @@
 CC = icc
 CXX = icpc
-CFLAGS = -Wall -std=c99 -openmp -O3 -g -I.
+CFLAGS = -Wall -std=gnu99 -openmp -O3 -g -I.
 CXXFLAGS = -Wall -openmp -O3 -g
 #overkill on the flags, but that doesn't hurt anything
 LDFLAGS = -lrt -lpthread
