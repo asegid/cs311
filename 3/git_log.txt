@@ -1,0 +1,62 @@
+Date:   Mon Feb 4 22:05:40 2013 -0800
+Date:   Mon Feb 4 17:57:20 2013 -0800
+    Fixed errors preventing writeup from compiling
+Date:   Mon Feb 4 17:48:32 2013 -0800
+    Switched to provided template, won't compile..
+Date:   Mon Feb 4 17:23:21 2013 -0800
+    Update to writeup
+Date:   Mon Feb 4 17:05:21 2013 -0800
+    Deletes
+Date:   Mon Feb 4 17:02:40 2013 -0800
+    Changed hierarchy, working on writeup
+Date:   Mon Feb 4 11:03:13 2013 -0800
+    Finished makefile
+Date:   Mon Feb 4 10:41:22 2013 -0800
+    Begin work on write up
+Date:   Sun Feb 3 17:47:34 2013 -0800
+    Everything happy apparently maybe hopefully
+Date:   Sun Feb 3 16:26:18 2013 -0800
+    Style, error checking fixes
+Date:   Sat Feb 2 22:09:14 2013 -0800
+    Finished extraction, finished main functions
+    
+    TODO:
+    -expand and clean up error checking
+    -extra credit function
+    -extra credit duplicates
+    -make file
+    -header file?
+    -LaTeX writeup
+Date:   Sat Feb 2 21:05:28 2013 -0800
+    Add error checking, rebased mistake
+Date:   Sat Feb 2 20:12:43 2013 -0800
+    Finished "append all" method
+Date:   Sat Feb 2 15:36:05 2013 -0800
+    Fix for delete func, added more test files
+Date:   Sat Feb 2 13:56:24 2013 -0800
+    Delete unnecessary function, fix for perms, adding
+Date:   Fri Feb 1 22:56:25 2013 -0800
+    Remove unnecessary define
+Date:   Fri Feb 1 22:41:31 2013 -0800
+    Fix for issue involving files starting at odd byte
+Date:   Fri Feb 1 22:14:42 2013 -0800
+    Added broken ar archive for testing
+Date:   Fri Feb 1 22:10:30 2013 -0800
+    Append option working (on some ar modes, need test)
+Date:   Fri Feb 1 12:32:15 2013 -0800
+    Delete function changed, still doesn't work...
+Date:   Wed Jan 30 21:35:38 2013 -0800
+    Sketched out file from archive delete logic
+Date:   Wed Jan 30 17:19:11 2013 -0800
+    Fix formatting issues associated with ar -tv
+Date:   Wed Jan 30 08:11:33 2013 -0800
+    Structure change (LaTeX template removed)
+    
+    Switching to McGrath's makefile based LaTeX approach.
+Date:   Tue Jan 29 22:59:08 2013 -0800
+    Got complex printing done (minus formatting)
+Date:   Mon Jan 28 21:02:19 2013 -0800
+    Got basic printing working, no lstat yet.
+Date:   Sun Jan 27 19:47:48 2013 -0800
+Date:   Sun Jan 27 19:44:29 2013 -0800
+    ASSIGNMENT 2: begin work
