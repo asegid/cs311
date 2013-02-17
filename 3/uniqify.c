@@ -21,11 +21,6 @@
 /* Length picked for longest word ever to appear in literature */
 #define MAX_STR_LEN 184
 
-enum {
-MODIFY_PIPES = 1 >> 1;
-SPAWN_SINGLE = 1 >> 2;
-} flags;
-
 struct pipes {
 	int in[2];
 	int out[2];
@@ -44,11 +39,12 @@ int find_next(int num, char words[][MAX_STR_LEN]);
 int main(int argc, char **argv);
 void open_pipes(int num, struct pipes *p);
 void sig_handle(int signo);
-int spawn_process(int num, struct pipes *p, void (*torun) (int, struct pipes *));
+int spawn_sorts(int num, struct pipes *p);
+int spawn_suppressor(int num, struct pipes *p);
 void str_tolower(char *str, int len);
 void str_rm_newline(char *str, int len);
 void run_parser(int num, struct pipes *p);
-void run_sorts(int num, struct pipes *p);
+void run_sort(int num, struct pipes *p);
 void run_suppressor(int num, struct pipes *p);
 int wait_children(int num);
 
@@ -123,7 +119,7 @@ void run_parser(int num, struct pipes *p)
 
 }
 
-void run_sorts(int num, struct pipes *p)
+void run_sort(int num, struct pipes *p)
 {
 	int ret;
 
@@ -194,47 +190,58 @@ void sig_handle(int signo)
 	exit(1);
 }
 
-int spawn_process(int num, int flags, struct pipes *p, void (*torun) (int, struct pipes *))
+int spawn_sorts(int num, struct pipes *p)
 {
 	pid_t child_pid;
-	int gen = num;
 
-	if (flags & SPAWN_SINGLE) {
-		gen = 1;
-	}
-
-	for (int i = 0; i < gen; ++i) {
-		if (p != NULL) {
-		}
-
+	for (int i = 0; i < num; ++i) {
 		switch (child_pid = fork()) {
 		case -1:
 			perror("fork");
 			break;
 		case 0:
-			if ((flags & MODIFY_PIPES) && (p != NULL)) {
-				//close(STDIN_FILENO);
-				//if (dup2(p[i].in[0], STDIN_FILENO) == -1) {
-				//	perror("dup2");
-				//}
+			if (p != NULL) {
+				close(STDIN_FILENO);
+				if (dup2(p[i].in[0], STDIN_FILENO) == -1) {
+					perror("dup2");
+				}
 				close(STDOUT_FILENO);
 				if (dup2(p[i].out[1], STDOUT_FILENO) == -1) {
 					perror("dup2");
 				}
-				//close_fd(p[i].out[0]);
-				//close_fd(p[i].in[1]);
+				close_fd(p[i].out[0]);
+				close_fd(p[i].in[1]);
 			}
-			(*torun) (num, p);
+			run_sort(num, p);
 			break;
 		default:
-			if ((flags & MODIFY_PIPES) && (p != NULL)) {
-				//close_fd(p[i].out[1]);
-				//close_fd(p[i].in[0]);
+			if (p != NULL) {
+				close_fd(p[i].out[1]);
+				close_fd(p[i].in[0]);
 			}
 			break;
 		}
 	}
-	printf("done spawning\n");
+	return (EXIT_SUCCESS);
+}
+
+
+int spawn_suppressor(int num, struct pipes *p)
+{
+	pid_t child_pid;
+
+	for (int i = 0; i < num; ++i) {
+		switch (child_pid = fork()) {
+		case -1:
+			perror("fork");
+			break;
+		case 0:
+			run_suppressor(num, p);
+			break;
+		default:
+			break;
+		}
+	}
 	return (EXIT_SUCCESS);
 }
 
