@@ -1,0 +1,88 @@
+30.1 Threads
+Threads share information via global variables. A critical section is a chunk
+of code that accesses a shared resource (and should thus be atomic and
+not interrupted by other threads)
+
+loc = local variable
+glob = global variable
+mutex = mutual exclusion, controls access to shared resource. Threads
+lock the mutex (ensuring only they have access), must unlock before other
+threads can touch it.
+
+Type: pthread_mutex_t, can assign static = PTHREAD_MUTEX_INITIALIZER
+
+Commands: int pthread_mutex_lock(pthread_mutex_t *mutex);
+          int pthread_mutex_unlock(pthread_mutex_t *mutex);
+          pthread_mutex_trylock() : fails if currently locked, returns EBUSY
+          pthread_mutex_timedlock() : limits time waiting to acquire (lock) mutex
+
+No significant performance cost of using mutexes
+
+Mutex deadlock: example - threads 1,2 both lock mutexes A, B. If 1 locks A first,
+and 2 locks B first, then 2 is stuck trying to lock A, 1 is stuck trying to lock
+B. Neither will ever complete unless handled.
+Fixes:
+1. mutex hierarchy (always lock mutexes in the same order, e.g. always A before B)
+2. "try and back off" - release all mutexes if a timeout occurs trying to lock
+one, and maybe try again.
+
+Dynamic initialization:
+int pthread_mutex_init(pthread_mutex_t *mutex, pthread_mutex_attr_t *attr);
+attr contains attributes for the mutex, mutex is the mutex to be initialized.
+
+Example attribute:
+PTHREAD_MUTEX_NORMAL - deadlock detection not provided. Undefined results if
+unlock called on unlocked mutex or mutex locked by other thread (on linux,
+these actually work for this mutex type).
+
+PTHREAD_MUTEX_ERRORCHECK - error checking performed on all operations, slower
+than a normal mutex, but useful for debugging application mutex usage.
+
+PTHREAD_MUTEX_RECURSIVE - implements a lock count (lock operations by a single
+thread increment count, decremented by unlocks. Mutex released for other
+threads only when lock count is zero. Unlocking an unlocked mutex fails, as
+well as unlocking a mutex locked by another thread.
+
+Delete dynamically initialized mutexes using
+int pthread_mutex_destroy(pthread_mutex_t *mutex);
+
+30.2 Condition Variables
+A mutex prevents multiple threads from accessing a shared variable at the same
+time.
+A condition variable allows one thread to tell other threads about changes
+in shared resources, along with allowing those threads to wait for notification.
+
+Condition variables have type pthread_cond_t, initialized by assigning
+value PTHREAD_COND_INITIALIZER (static) or pthread_cond_init() (dynamic).
+
+Primary ops are signal and wait:
+int pthread_cond_signal(pthread_cond_t *cond);
+signal : at least one blocked thread woken up
+int pthread_cond_broadcast(pthread_cond_t *cond);
+broadcast : all blocked (waiting for condition) threads woken up
+int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex);
+
+int pthread_cont_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex,
+                           const struct timespec *abstime);
+adds a max timeout for waiting (versus ..cond_wait())
+
+Each condition variable has an associated *predicate* involving one or more
+:q
+shared variables. The predicate is a condition that must be true for
+the thread to perform a certain action (i.e. that action is predicated by
+a certain condition)
+
+pthread_cond_wait() must be governed by a while loop rather
+than an if statement (no guarantee on the state of the predicate)
+
+int pthread_cond_init(pthread_cond_t *cond, const pthread_condattr_t *attr);
+cond is the variable to be initialized, attr is the attributes to be used
+for the condition variable (NULL means a default set assigned). Do NOT
+initialize already initialized condition variables.
+
+int pthread_cond_destroy(pthread_cond_t *cond);
+safe to destory a condition variable iff no threads are waiting on it.
+
+SUMMARY
+Threads allow greater sharing, however need mutexes and condition variables
+to access shared variables.

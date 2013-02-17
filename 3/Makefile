@@ -30,7 +30,7 @@ compile: ${SOURCE} ${INCLUDES}
 debug: ${SOURCE} ${INCLUDES}
 	${CC} ${CFLAGS} ${SOURCE} -o ${CTARGET} ${LDFLAGS} -DDEBUG
 
-dvi: ${TEXTARGET}.tex 
+dvi: ${TEXTARGET}.tex
 #	pygmentize the input source file -- THIS NAME SHOULD BE SAFE
 	pygmentize -f latex -o __${SRC}.tex ${SRC}
 #	run latex twice to get references correct
@@ -58,3 +58,5 @@ html:
 	rm ${HTML}.*
 	rm -rf ${HTML}
 
+clean:
+	rm ${TEXTARGET}.dvi ${TEXTARGET}.log ${TEXTARGET}.out ${TEXTARGET}.ps ${TEXTARGET}.aux ${TEXTARGET}.pdf ${CTARGET}

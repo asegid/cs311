@@ -1,0 +1,25 @@
+### C/C++ ###
+# Object files
+*.o
+*.slo
+*.lo
+
+# Libraries
+*.lib
+*.a
+
+# Shared objects
+*.dll
+*.so
+*.so.*
+*.dylib
+*.lai
+*.la
+
+# Executables
+*.exe
+*.out
+*.app
+
+### LaTeX ###
+

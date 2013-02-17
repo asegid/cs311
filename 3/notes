@@ -1,0 +1,4 @@
+SIGHUP reread from config
+signal handler should have a case statement
+make sure signals can't be ignored, and wait on children to reap
+
