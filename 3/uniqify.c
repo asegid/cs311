@@ -33,14 +33,13 @@ struct pipes {
 pid_t *procs;
 
 /* Function Prototypes */
-void close_fd(int fd);
 void close_pipes(int num, struct pipes *p);
 int find_next(int num, char words[][MAX_STR_LEN]);
+int fork_filter(int num, struct pipes *p);
+int fork_sorters(int num, struct pipes *p);
 int main(int argc, char **argv);
 void open_pipes(int num, struct pipes *p);
 void sig_handle(int signo);
-int spawn_sorts(int num, struct pipes *p);
-int spawn_suppressor(int num, struct pipes *p);
 void str_tolower(char *str, int len);
 void str_rm_newline(char *str, int len);
 void run_parser(int num, struct pipes *p);
@@ -79,12 +78,6 @@ void close_pipes(int num, struct pipes *p)
 	}
 }
 
-void close_fd(int fd)
-{
-	if (close(fd) == -1)
-		perror("close");
-}
-
 void run_parser(int num, struct pipes *p)
 {
 	char cur[MAX_STR_LEN];
@@ -94,25 +87,30 @@ void run_parser(int num, struct pipes *p)
 
 	/* Open pipes for writing */
 	for (int i = 0; i < num; ++i) {
-		if ((write_ends[i] = fdopen(p[i].out[1], "w")) == NULL) {
+		if ((write_ends[i] = fdopen(p[i].in[1], "w")) == NULL)
 			perror("fdopen");
-		}
 	}
 
 	/* Parse and distribute */
 	do {
 		ret = scanf("%[a-zA-Z]", cur);
-		if (ret == 1) {
+		switch (ret) {
+		case 1:
 			str_tolower(cur, strlen(cur));
 			fputs(cur, write_ends[cur_sorter]);
+			fputs("\n", write_ends[cur_sorter]);
 			cur_sorter = (cur_sorter + 1) % num;
-		} else {
+			break;
+		case 0:
 			/* need to swallow junk apparently */
-		}
 			ret = scanf("%*[^a-zA-Z]");
+			break;
+		case -1:
+		default:
+			break;
+		}
 	} while (ret != EOF);
 
-	printf("done parsing\n");
 	/* Done parsing, so flush */
 	for (int i = 0; i < num; ++i)
 		fclose(write_ends[i]);
@@ -124,11 +122,12 @@ void run_sort(int num, struct pipes *p)
 	int ret;
 
 	/* Assumes pipes are already set up */
-	if ((ret = execlp("sort", "sort", (char *) NULL)) == -1)
+	if ((ret = execlp("sort", "sort", (char *) NULL)) == -1) {
 		perror("execlp");
+		_exit(EXIT_FAILURE);
+	}
 
 	/* call _exit() instead of exit() for children of fork */
-	perror("done sorting");
 	_exit(EXIT_SUCCESS);
 }
 
@@ -144,30 +143,34 @@ void run_suppressor(int num, struct pipes *p)
 
 	/* Set up and init read pipes */
 	for (int i = 0; i < num; ++i) {
-		read_ends[i] = fdopen(p[i].in[0], "r");
-		fgets(words[i], MAX_STR_LEN, read_ends[i]);
+		read_ends[i] = fdopen(p[i].out[0], "r");
+		if (fgets(words[i], MAX_STR_LEN, read_ends[i]) == NULL) {
+			words[i][0] = '\0';
+			++empty_cnt;
+		}
 	}
 
 	/* Setup for first word */
 	first_word = find_next(num, words);
 	strncpy(cur, words[first_word], MAX_STR_LEN);
-	str_rm_newline(cur, MAX_STR_LEN);
+	str_rm_newline(cur, strlen(cur));
 	occur_cnt = 1;
 
 	while (empty_cnt <= num) {
 		if (fgets(words[next], MAX_STR_LEN, read_ends[next]) == NULL) {
-			memset(words[next], 0, MAX_STR_LEN);
+			/* Truncate word to not be included in calcs */
+			words[next][0] = '\0';
 			++empty_cnt;
 		}
 		next = find_next(num, words);
 		/* Increment count while on same word, otherwise handle end */
-		if ((next >= 0) && (strcmp(cur, words[next]) == 0)) {
+		if ((next >= 0) && (strncmp(cur, words[next], strlen(cur)) == 0)) {
 			++occur_cnt;
 		} else {
-			printf("%s : %d\n", cur, occur_cnt);
+			str_rm_newline(cur, strlen(cur));
+			printf("%d: %s\n", occur_cnt, cur);
 			if (next >= 0) {
 				strncpy(cur, words[next], MAX_STR_LEN);
-				str_rm_newline(cur, MAX_STR_LEN);
 				occur_cnt = 1;
 			}
 		}
@@ -190,9 +193,11 @@ void sig_handle(int signo)
 	exit(1);
 }
 
-int spawn_sorts(int num, struct pipes *p)
+int fork_sorters(int num, struct pipes *p)
 {
 	pid_t child_pid;
+
+	open_pipes(num, p);
 
 	for (int i = 0; i < num; ++i) {
 		switch (child_pid = fork()) {
@@ -201,23 +206,29 @@ int spawn_sorts(int num, struct pipes *p)
 			break;
 		case 0:
 			if (p != NULL) {
-				close(STDIN_FILENO);
-				if (dup2(p[i].in[0], STDIN_FILENO) == -1) {
-					perror("dup2");
-				}
-				close(STDOUT_FILENO);
-				if (dup2(p[i].out[1], STDOUT_FILENO) == -1) {
-					perror("dup2");
-				}
-				close_fd(p[i].out[0]);
-				close_fd(p[i].in[1]);
+				if (close(STDIN_FILENO) == -1)
+					perror("close");
+				if (close(STDOUT_FILENO) == -1)
+					perror("close");
+
+				if (dup2(p[i].in[0], STDIN_FILENO) == -1)
+					perror("dup2 (in)");
+				if (dup2(p[i].out[1], STDOUT_FILENO) == -1)
+					perror("dup2 (out)");
+
+				if (close(p[i].in[1]) == -1)
+					perror("close");
+				if (close(p[i].out[0]) == -1)
+					perror("close");
 			}
 			run_sort(num, p);
 			break;
 		default:
 			if (p != NULL) {
-				close_fd(p[i].out[1]);
-				close_fd(p[i].in[0]);
+				if (close(p[i].in[0]) == -1)
+					perror("close");
+				if (close(p[i].out[1]) == -1)
+					perror("close");
 			}
 			break;
 		}
@@ -226,22 +237,21 @@ int spawn_sorts(int num, struct pipes *p)
 }
 
 
-int spawn_suppressor(int num, struct pipes *p)
+int fork_filter(int num, struct pipes *p)
 {
 	pid_t child_pid;
 
-	for (int i = 0; i < num; ++i) {
-		switch (child_pid = fork()) {
-		case -1:
-			perror("fork");
-			break;
-		case 0:
-			run_suppressor(num, p);
-			break;
-		default:
-			break;
-		}
+	switch (child_pid = fork()) {
+	case -1:
+		perror("fork");
+		break;
+	case 0:
+		run_suppressor(num, p);
+		break;
+	default:
+		break;
 	}
+
 	return (EXIT_SUCCESS);
 }
 
@@ -259,9 +269,8 @@ void str_rm_newline(char *str, int len)
 
 int wait_children(int num)
 {
-	for (int i = 0; i < num; ++i) {
+	for (int i = 0; i < num; ++i)
 		wait(NULL);
-	}
 
 	return (EXIT_SUCCESS);
 }
@@ -283,7 +292,6 @@ int main(int argc, char **argv)
 
 	/* Fill memory */
 	struct pipes p[sort_num];
-	open_pipes(sort_num, p);
 
 	/* Install a signal handler */
 	// INTR, QUIT, HANGUP
@@ -292,21 +300,18 @@ int main(int argc, char **argv)
 	// QUIT to children
 
 	/** Run the sorters, get them ready for input */
-	spawn_process(sort_num, p, &run_sorts);
+	fork_sorters(sort_num, p);
 
 	/** Run the parser */
 	run_parser(sort_num, p);
 
 	/** Run the suppressor */
-	//spawn_process(1, NULL, &run_suppressor);
-	run_suppressor(sort_num, p);
+	fork_filter(sort_num, p);
 
-	printf("waiting\n");
 	/* Cleanup */
 	wait_children(sort_num + 1);
 	close_pipes(sort_num, p);
 
 	/* return exit status */
-	printf("exiting\n");
 	return (EXIT_SUCCESS);
 }
