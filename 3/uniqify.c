@@ -127,7 +127,6 @@ void run_parser(int num, struct pipes *p)
 	for (int i = 0; i < num; ++i)
 		fclose(write_ends[i]);
 
-	printf("run_parser\n");
 }
 
 void run_sort(int num, struct pipes *p)
@@ -139,7 +138,6 @@ void run_sort(int num, struct pipes *p)
 		perror("execlp");
 		_exit(EXIT_FAILURE);
 	}
-	perror("sort TST");
 	/* call _exit() instead of exit() for children of fork */
 	_exit(EXIT_SUCCESS);
 }
@@ -323,7 +321,7 @@ int main(int argc, char **argv)
 
 	/* Install a signal handler */
 	handler.sa_handler = sig_handle;
-	hander.sa_flags = 0;
+	handler.sa_flags = 0;
 	sigemptyset(&handler.sa_mask);
 	/* need to handle INTR, QUIT, HANGUP by sigaction */
 	sigaction(SIGHUP, &handler, NULL);
@@ -343,7 +341,6 @@ int main(int argc, char **argv)
 	fork_filter(sort_num, p);
 
 	/* Cleanup */
-	printf("cleanup\n");
 	wait_children(sort_num + 1);
 	close_pipes(sort_num, p);
 	free (procs);
