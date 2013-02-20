@@ -120,7 +120,9 @@ void run_parser(int num, struct pipes *p)
 			cur_sorter = (cur_sorter + 1) % num;
 			cur[0] = '\0';
 		}
-		ret = scanf("%*[^a-zA-Z]");
+		if (ret == 0) {
+			ret = scanf("%*[^a-zA-Z]");
+		}
 	} while (ret != EOF);
 
 	/* Done parsing, so flush */
@@ -331,11 +333,11 @@ int main(int argc, char **argv)
 	/* Get the pipes ready */
 	open_pipes(sort_num, p);
 
-	/** Run the sorters, get them ready for input */
-	fork_sorters(sort_num, p);
-
 	/** Run the parser */
 	run_parser(sort_num, p);
+
+	/** Run the sorters, get them ready for input */
+	fork_sorters(sort_num, p);
 
 	/** Run the suppressor */
 	fork_filter(sort_num, p);
