@@ -44,16 +44,35 @@ void str_tolower(char *str, int len);
 void str_rm_newline(char *str, int len);
 void run_parser(int num, struct pipes *p);
 void run_sort(int num, struct pipes *p);
-void run_suppressor(int num, struct pipes *p);
+void run_filter(int num, struct pipes *p);
 int wait_children(int num);
 
 int find_next(int num, char words[][MAX_STR_LEN])
 {
-	int idx = 0;
+	int idx = -1;
 
+	/* Jump to the first non empty stream */
 	for (int i = 0; i < num; ++i) {
-		if (strcmp(words[i], words[idx]) < 0)
+		if (words[i][0] != '\0') {
 			idx = i;
+			break;
+		}
+	}
+
+	/* Check strcmp results */
+	if (strcmp("a", "b") < 0) {
+		for (int i = idx; i < num; ++i) {
+
+			if ((words[i][0] != '\0')
+			 && (strcmp(words[i], words[idx]) < 0))
+				idx = i;
+		}
+	} else {
+		for (int i = idx; i < num; ++i) {
+			if ((words[i][0] != '\0')
+			 && (strcmp(words[i], words[idx]) > 0))
+				idx = i;
+		}
 	}
 
 	return (idx);
@@ -94,21 +113,14 @@ void run_parser(int num, struct pipes *p)
 	/* Parse and distribute */
 	do {
 		ret = scanf("%[a-zA-Z]", cur);
-		switch (ret) {
-		case 1:
+		if (ret == 1) {
 			str_tolower(cur, strlen(cur));
 			fputs(cur, write_ends[cur_sorter]);
 			fputs("\n", write_ends[cur_sorter]);
 			cur_sorter = (cur_sorter + 1) % num;
-			break;
-		case 0:
-			/* need to swallow junk apparently */
-			ret = scanf("%*[^a-zA-Z]");
-			break;
-		case -1:
-		default:
-			break;
+			cur[0] = '\0';
 		}
+		ret = scanf("%*[^a-zA-Z]");
 	} while (ret != EOF);
 
 	/* Done parsing, so flush */
@@ -126,16 +138,14 @@ void run_sort(int num, struct pipes *p)
 		perror("execlp");
 		_exit(EXIT_FAILURE);
 	}
-
 	/* call _exit() instead of exit() for children of fork */
 	_exit(EXIT_SUCCESS);
 }
 
-void run_suppressor(int num, struct pipes *p)
+void run_filter(int num, struct pipes *p)
 {
 	char cur[MAX_STR_LEN];
 	int empty_cnt = 0;
-	int first_word;
 	int next;
 	int occur_cnt;
 	FILE *read_ends[num];
@@ -151,17 +161,19 @@ void run_suppressor(int num, struct pipes *p)
 	}
 
 	/* Setup for first word */
-	first_word = find_next(num, words);
-	strncpy(cur, words[first_word], MAX_STR_LEN);
+	next = find_next(num, words);
+	strncpy(cur, words[next], MAX_STR_LEN);
 	str_rm_newline(cur, strlen(cur));
 	occur_cnt = 1;
 
 	while (empty_cnt <= num) {
+		/* Fill in the last word with its replacement */
 		if (fgets(words[next], MAX_STR_LEN, read_ends[next]) == NULL) {
 			/* Truncate word to not be included in calcs */
 			words[next][0] = '\0';
 			++empty_cnt;
 		}
+
 		next = find_next(num, words);
 		/* Increment count while on same word, otherwise handle end */
 		if ((next >= 0) && (strncmp(cur, words[next], strlen(cur)) == 0)) {
@@ -179,25 +191,34 @@ void run_suppressor(int num, struct pipes *p)
 	for (int i = 0; i < num; ++i)
 		fclose(read_ends[i]);
 
+	perror("filter TST");
 	/* call _exit() instead of exit() for children of fork */
 	_exit(EXIT_SUCCESS);
 }
 
 void sig_handle(int signo)
 {
-	if (procs != NULL) {
+	int sig = SIGQUIT;
+	int size = (sizeof(procs) / sizeof(pid_t));
 
+	if (signo == SIGINT) {
+		sig = SIGINT;
+	}
+
+	if (procs != NULL) {
+		for (int i = 0; i < size; ++i) {
+			kill(procs[i], sig);
+		}
 		free(procs);
 	}
 
+	wait_children(size);
 	exit(1);
 }
 
 int fork_sorters(int num, struct pipes *p)
 {
 	pid_t child_pid;
-
-	open_pipes(num, p);
 
 	for (int i = 0; i < num; ++i) {
 		switch (child_pid = fork()) {
@@ -207,23 +228,24 @@ int fork_sorters(int num, struct pipes *p)
 		case 0:
 			if (p != NULL) {
 				if (close(STDIN_FILENO) == -1)
-					perror("close");
+					perror("fork_sorters: close STDIN");
 				if (close(STDOUT_FILENO) == -1)
-					perror("close");
+					perror("fork_sorters: close STDOUT");
 
 				if (dup2(p[i].in[0], STDIN_FILENO) == -1)
 					perror("dup2 (in)");
 				if (dup2(p[i].out[1], STDOUT_FILENO) == -1)
 					perror("dup2 (out)");
 
-				if (close(p[i].in[1]) == -1)
-					perror("close");
+				//if (close(p[i].in[1]) == -1)
+				//	perror("fork_sorters in: close");
 				if (close(p[i].out[0]) == -1)
-					perror("close");
+					perror("fork_sorters out: close");
 			}
 			run_sort(num, p);
 			break;
 		default:
+			procs[i] = child_pid;
 			if (p != NULL) {
 				if (close(p[i].in[0]) == -1)
 					perror("close");
@@ -246,9 +268,10 @@ int fork_filter(int num, struct pipes *p)
 		perror("fork");
 		break;
 	case 0:
-		run_suppressor(num, p);
+		run_filter(num, p);
 		break;
 	default:
+		procs[num] = child_pid;
 		break;
 	}
 
@@ -269,8 +292,9 @@ void str_rm_newline(char *str, int len)
 
 int wait_children(int num)
 {
-	for (int i = 0; i < num; ++i)
+	for (int i = 0; i < num; ++i) {
 		wait(NULL);
+	}
 
 	return (EXIT_SUCCESS);
 }
@@ -278,6 +302,7 @@ int wait_children(int num)
 int main(int argc, char **argv)
 {
 	int sort_num;
+	struct sigaction handler;
 
 	/* Check input and assign appropriately */
 	if (argc != 2) {
@@ -292,12 +317,19 @@ int main(int argc, char **argv)
 
 	/* Fill memory */
 	struct pipes p[sort_num];
+	procs = malloc (sizeof(pid_t) * (sort_num + 1));
 
 	/* Install a signal handler */
-	// INTR, QUIT, HANGUP
-	// sigaction
-	// signal handler
-	// QUIT to children
+	handler.sa_handler = sig_handle;
+	handler.sa_flags = 0;
+	sigemptyset(&handler.sa_mask);
+	/* need to handle INTR, QUIT, HANGUP by sigaction */
+	sigaction(SIGHUP, &handler, NULL);
+	sigaction(SIGINT, &handler, NULL);
+	sigaction(SIGQUIT, &handler, NULL);
+
+	/* Get the pipes ready */
+	open_pipes(sort_num, p);
 
 	/** Run the sorters, get them ready for input */
 	fork_sorters(sort_num, p);
@@ -311,6 +343,7 @@ int main(int argc, char **argv)
 	/* Cleanup */
 	wait_children(sort_num + 1);
 	close_pipes(sort_num, p);
+	free (procs);
 
 	/* return exit status */
 	return (EXIT_SUCCESS);
