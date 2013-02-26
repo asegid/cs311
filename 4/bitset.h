@@ -6,12 +6,15 @@
  * Description:  Bitset public interface, inspired by:
  *               stackoverflow.com/questions/2633400/c-c-efficient-bit-array
  */
+#ifndef BITSET_H
+#define BITSET_H
 
 #include <stdint.h>
 
 #define CHUNK_SIZE (sizeof (chunk_t) * 8)
 
-typedef uint32_t chunk_t;
+/* Smallest data type is preferable over size == processor bus size */
+typedef unsigned char chunk_t;
 
 struct bitset {
 	chunk_t *chunks;
@@ -32,4 +35,4 @@ void bit_clear (struct bitset *bs, uint64_t idx);
 
 uint64_t bit_get (struct bitset *bs, uint64_t idx);
 
-
+#endif

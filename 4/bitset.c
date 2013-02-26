@@ -27,10 +27,6 @@ struct bitset *bitset_alloc (uint64_t n_bits) {
 	/* Calloc is faster than malloc + memset, better performance. */
 	bs->chunks = calloc (bs->n_chunks, sizeof (*bs->chunks));
 
-	//bs->chunks = malloc (sizeof (*bs->chunks) * bs->n_chunks);
-	///* Initialize to zero. Small allocs may have junk in them */
-	//memset(bs->chunks, 0, sizeof (bs->chunks));
-
 	return (bs);
 }
 
@@ -41,7 +37,7 @@ void bitset_free (struct bitset *bs) {
 
 /* Bit operations */
 void bit_set (struct bitset *bs, uint64_t idx) {
-	bs->chunks[bindex(idx)] |= 1 << (boffset (idx));
+	bs->chunks[bindex(idx)] |= (1 << (boffset (idx)));
 }
 
 void bit_toggle (struct bitset *bs, uint64_t idx) {
