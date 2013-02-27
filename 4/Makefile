@@ -6,7 +6,8 @@ CXXFLAGS = -Wall -openmp -O3 -g
 #overkill on the flags, but that doesn't hurt anything
 LDFLAGS = -lrt -lpthread
 #replace this if you want to change the output name
-CTARGET = sieve
+CTARGET = threaded
+CTARGET_2 = forked
 TEXTARGET = writeup
 
 # LaTeX related constants
@@ -14,19 +15,22 @@ HTML=main_html
 SRC=mt.h
 
 #any headers go here
-INCLUDES = bitset.h sieve.h
+INCLUDES = 
+INCLUDES_2 = 
 
 #any .c or .cpp files go here
-SOURCE = main.c bitset.c sieve.c
+SOURCE = threaded.c
+SOURCE_2 = forked.c
 
 #default is to compile and pdf
 default: pdf compile
 both: pdf html
 
 #depends on all of you source and header files
-compile: ${SOURCE} ${INCLUDES}
+compile: ${SOURCE} ${SOURCE_2} ${INCLUDES} ${INCLUDES_2}
 #this assumes you actually are linking all of the source files together
 	${CC} ${CFLAGS} ${SOURCE} -o ${CTARGET} ${LDFLAGS}
+	${CC} ${CFLAGS} ${SOURCE_2} -o ${CTARGET_2} ${LDFLAGS}
 
 debug: ${SOURCE} ${INCLUDES}
 	${CC} ${CFLAGS_DEBUG} ${SOURCE} -o ${CTARGET} ${LDFLAGS} -DDEBUG

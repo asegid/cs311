@@ -1,2 +1,0 @@
-Endless loop is encountered when we repeat a number looking for a happy number!
-

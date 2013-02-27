@@ -1,0 +1,4 @@
+Endless loop is encountered when we repeat a number looking for a happy number!
+
+View code listing in the pthreads section, should have something about
+implementing lock on elements (mutex).
