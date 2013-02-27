@@ -20,7 +20,7 @@ INCLUDES = bitset.h
 SOURCE = sieve_of_atkin.c bitset.c
 
 #default is to compile and pdf
-default: pdf compile
+default: compile
 both: pdf html
 
 #depends on all of you source and header files
