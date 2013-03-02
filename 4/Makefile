@@ -15,11 +15,11 @@ HTML=main_html
 SRC=mt.h
 
 #any headers go here
-INCLUDESA = 
+INCLUDESA = bst.h
 INCLUDESB = 
 
 #any .c or .cpp files go here
-SOURCEA = main.c
+SOURCEA = main.c bst.c compare.c
 SOURCEB = fork_sieve.c
 
 #default is to compile and pdf

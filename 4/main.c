@@ -8,13 +8,19 @@
 
 #include <assert.h>
 #include <math.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/time.h>
 
+#include "bst.h"
+
 #define CHUNK_SIZE (sizeof (chunk_t) * 8)
+
+/* Lookup table for squares of 0-9 for happy finding */
+const int squares[] = {0, 1, 4, 9, 16, 25, 36, 49, 64, 81};
 
 typedef uint8_t chunk_t;
 
@@ -147,28 +153,67 @@ void eliminate_composites(uint32_t lim, uint32_t sqrt_lim, struct bitset *bs,
 	}
 }
 
-int is_happy(uint32_t num) {
-	
+/* Happy functions */
+bool is_happy(uint32_t num) {
+	uint64_t ceil;
+	uint32_t cur = num;
+	bool happy = false;
+	bool repeating = false;
+	uint32_t rem = num;
+	uint64_t sum = 1;
+	struct BSTree *seen = newBSTree();
 
+	//while (!found && !containsBSTree(seen, sum)) {
+	while (!happy && !repeating) {
+		/* One cycle here */
+		uint64_t mod = 10;
+		uint32_t modded;
+		sum = 0;
+
+		ceil = cur * 10;
+		while (mod <= ceil) {
+			modded = (cur % mod) / (mod / 10);
+			sum += squares[modded];
+			rem -= modded;
+			mod *= 10;
+		}
+
+		if (sum == 1) {
+			happy = true;
+		} else {
+			if (containsBSTree(seen, sum)) {
+				repeating = true;
+			} else {
+				addBSTree (seen, sum);
+				cur = sum;
+			}
+		}
+	}
+
+	deleteBSTree (seen);
+	return (happy);
 }
 
-/* Happy functions */
 void determine_happies(uint32_t lim, uint32_t sqrt_lim, struct bitset *bs,
-                          uint32_t min, uint32_t max)
+                       uint32_t min, uint32_t max)
 {
 	uint32_t n;
 
-	for (n = min, n <= max; ++n) {
-		if (bit_get (bs, n) != 0) {
-			
+	/* Remove primes that aren't happy */
+	for (n = min; n <= max; ++n) {
+		if (bit_get (bs, n)) {
+			if (!is_happy(n)) {
+				bit_clear(bs, n);
+			}
 		}
 	}
 }
+
 int main (int argc, char **argv)
 {
 	uint32_t cnt = 0;
 	uint64_t n;
-	uint32_t limit = UINT32_MAX;
+	uint32_t limit = UINT16_MAX;//UINT32_MAX;
 	struct bitset *bs = bitset_alloc (limit);
 	uint32_t sqrt_lim = (uint32_t) sqrt ((double)limit);
 
@@ -178,8 +223,10 @@ int main (int argc, char **argv)
 	eliminate_composites(limit, sqrt_lim, bs, 5, sqrt_lim);
 	gettimeofday(&end, NULL);
 
-	printf("\ntotal prime time: %lis %lius", (end.tv_sec -  start.tv_sec),
+	printf("\ntotal prime time: %lis %lius\n", (end.tv_sec -  start.tv_sec),
 	                             (end.tv_usec - start.tv_usec));
+
+	determine_happies(limit, sqrt_lim, bs, 0, limit);
 
 	/* Print primes */
 	//printf ("2, 3");
