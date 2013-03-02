@@ -95,7 +95,7 @@ int main (int argc, char **argv)
 	uint64_t n_sq;
 	uint32_t x, y;
 	uint64_t x_sq, y_sq;
-	uint32_t limit = UINT32_MAX;
+	uint32_t limit = UINT16_MAX;//UINT32_MAX;
 	struct bitset *bs = bitset_alloc (limit);
 	uint32_t sqrt_lim = (uint32_t) sqrt ((double)limit);
 
