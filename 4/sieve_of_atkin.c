@@ -143,4 +143,5 @@ int main (int argc, char **argv)
 		}
 	}
 	printf("\ncount : %lu\n", (unsigned long)cnt);
+	bitset_free (bs);
 }
