@@ -1,0 +1,126 @@
+56 Sockets: Introduction
+-Sockets are a method of inter-process communication (IPC) that allow data
+to be exchanged between applications, whether on the same host or on
+different hosts (in a network).
+
+-Applications typically use sockets in a client-server scenario, where the
+server "binds" its socket to a well-known addr so clients can connect to it.
+Created with: fd = socket(domain, type, protocol);
+
+-Sockets have a communication domain, such as AF_UNIX (same host in UNIX),
+AF_INET (IP version 4), and AF_INET6 (IP version 6).
+
+-System calls key for socket include:
+	socket() : creates a new socket
+		fd on success, -1 on error
+	bind() : binds socket to an address
+		0 on success, -1 on error
+	listen() : allows a stream socket to accept connections from others
+		0 on success, -1 on error. Marks socket as passive, meaning
+		it accepts connections from other sockets.
+	accept() : accept a connection from a peer application
+		fd on success, -1 on error. Accepts connection on stream
+		socket, if none current then blocks until one arrives. **Creates
+		a new socket which is connect() -ed to the other socket, allowign
+		the listen socket to stay open.
+	connect() : establish a connection with another socket
+		0 on success, -1 on error. If failed, close, create, and re
+		attempt the connection with socket.
+
+-Sockets are read using read(), write() [universality of I/O]
+
+-Streams terminated using close().
+
+-Generic address struct:
+	struct sockaddr { sa_family_t sa_family; char sa_data[14]; };
+
+--Datagrams--
+-recvfrom() and sendto() system calls receive and send datagrams
+on a datagram socket. Return # of bytes received/sent, 0 on EOF, or -1 on error.
+
+-connect() on datagram socket records an address as a socket's peer. Datagrams
+don't have connections, can read/write to any other socket. connect() is
+asymmetric (only changes socket called on).
+
+--Summary--
+Stream sockets are reliable, two direction, byte-stream communication channels
+between two endpoints. Datagram sockets are unreliable, connectionless, message-
+oriented communication. connect() used on datagram sockets allow you to use
+write() calls to send datagrams (instead of sendto())
+
+59 Sockets: Internet Domains
+--Internet Domain Sockets--
+-Internet domain sockets are implemented on top of TCP.
+
+-UNIX datagram sockets are reliable, but UDP sockets are NOT.
+
+-If datagram overflows queue, in UDP the datagram is silently dropped.
+
+--Byte order--
+-IP addresses and port numbers are integer values. A common issue is order of
+bytes in addresses, as network is typically Big-endian (MSB->LSB) versus most
+processors (but not all) being Little-endian (LSB->MSB).
+
+-Functions defined for host and network byte order conversion include:
+	htons() : returns host_uint16 converted to network byte order
+	htonl() : returns host_uint32 converted to network byte order
+	ntohs() : returns net_uint16 converted to host byte order
+	ntohl() : returns net_uint32 converted to host byte order
+
+--Data Representation--
+-Different computer architectures use different conventions for representing
+data types, e.g. a long may be 32 or 64 bits on different systems. Common
+fixes for communicating, knowing standards may be different, are *marshalling*,
+(putting data in a standard format across a network) and encoding all data
+in text form.
+
+-Can use ``telnet <host> <port>'' to debug an application.
+
+-the readLine() function reads bytes from fd until a newline is found:
+ssize_t readLine(int fd, void *buffer, size_t n);
+returns number of bytes copied into buffer, 0 on EOF, -1 on error.
+
+--Socket addresses--
+-IPv4 and IPv6 are the two *only* types of internet domain socket addresses.
+
+-IPv4 socket addresses are stored in a sockaddr_in struct (PIv6 is in a
+struct sockaddr_in6).
+
+--TODO 59.5
+
+63.2 I/O Multiplexing
+-I/O multiplexing allows simultaneous monitoring of multiple file descriptors to
+see if I/O is currently possible on any of them.
+
+--select()--
+-The select() system call blocks until one or more of a set of file descriptors
+becomes ready. *fds args specify fds to monitor. timeout is opt upper limit.
+int select (int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
+            struct timeval *timeout);
+returns number of ready, 0 on timeout, -1 on error.
+
+-readfds, writefds, and exceptfds are pointers to file desc sets (type fd_set)
+
+-Four macros, initialize, add fd, remove fd, and "is in set":
+void FD_ZERO(fd_set *fdset); void FD_SET(int fd, fd_set *fdset);
+void FD_CLR(int fd, fd_set *fdset); int FD_ISSET(int fd, fd_set *fdset);
+
+-fd_set have a max size of FD_SETSIZE (1024 on linux)
+
+-timeout is either NULL (block forever) or ptr to struct timeval (time_t tv_set;
+suseconds_t tv_usc)
+
+--poll()--
+-Similar to select(), but specifies only 1 list of fds to monitor (with their
+events), stored in an array of struct pollfd{int fd;short events; short revents;}.
+int poll(struct pollfd fds[], nfds_t nfds, int timeout);
+
+-poll timeout is different: -1 is block until a signal, 0 do not block,
+>0 block for timeout milliseconds
+
+--When is fd ready?--
+-SUSv3 states a fd is "ready" for I/O if an I/O call would not block,
+regardless of data transferred or not.
+
+-regular files are aways ready for I/O, either return data, EOF or error always
+(non blocking).
