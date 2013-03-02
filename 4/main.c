@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/time.h>
 
 #define CHUNK_SIZE (sizeof (chunk_t) * 8)
 
@@ -95,6 +96,7 @@ chunk_t bit_get (struct bitset *bs, uint64_t idx)
 	return (bs->chunks[bindex(idx)] & (1 << (boffset (idx))));
 }
 
+/* Sieve functions */
 void candidate_primes(uint32_t lim, uint32_t sqrt_lim, struct bitset *bs,
                       uint32_t min, uint32_t max)
 {
@@ -145,16 +147,39 @@ void eliminate_composites(uint32_t lim, uint32_t sqrt_lim, struct bitset *bs,
 	}
 }
 
+int is_happy(uint32_t num) {
+	
+
+}
+
+/* Happy functions */
+void determine_happies(uint32_t lim, uint32_t sqrt_lim, struct bitset *bs,
+                          uint32_t min, uint32_t max)
+{
+	uint32_t n;
+
+	for (n = min, n <= max; ++n) {
+		if (bit_get (bs, n) != 0) {
+			
+		}
+	}
+}
 int main (int argc, char **argv)
 {
 	uint32_t cnt = 0;
 	uint64_t n;
-	uint32_t limit = UINT16_MAX;//UINT32_MAX;
+	uint32_t limit = UINT32_MAX;
 	struct bitset *bs = bitset_alloc (limit);
 	uint32_t sqrt_lim = (uint32_t) sqrt ((double)limit);
 
+	struct timeval start, end;
+	gettimeofday(&start, NULL);
 	candidate_primes(limit, sqrt_lim, bs, 1, sqrt_lim);
 	eliminate_composites(limit, sqrt_lim, bs, 5, sqrt_lim);
+	gettimeofday(&end, NULL);
+
+	printf("\ntotal prime time: %lis %lius", (end.tv_sec -  start.tv_sec),
+	                             (end.tv_usec - start.tv_usec));
 
 	/* Print primes */
 	//printf ("2, 3");
