@@ -6,7 +6,8 @@ CXXFLAGS = -Wall -openmp -O3 -g
 #overkill on the flags, but that doesn't hurt anything
 LDFLAGS = -lrt -lpthread
 #replace this if you want to change the output name
-CTARGET = sieve
+CTARGETA = main
+CTARGETB = forked
 TEXTARGET = writeup
 
 # LaTeX related constants
@@ -14,19 +15,22 @@ HTML=main_html
 SRC=mt.h
 
 #any headers go here
-INCLUDES = 
+INCLUDESA = 
+INCLUDESB = 
 
 #any .c or .cpp files go here
-SOURCE = sieve_of_atkin.c
+SOURCEA = main.c
+SOURCEB = fork_sieve.c
 
 #default is to compile and pdf
 default: compile
 both: pdf html
 
 #depends on all of you source and header files
-compile: ${SOURCE} ${INCLUDES}
+compile: ${SOURCEA} ${INCLUDESA} 
 #this assumes you actually are linking all of the source files together
-	${CC} ${CFLAGS} ${SOURCE} -o ${CTARGET} ${LDFLAGS}
+	${CC} ${CFLAGS} ${SOURCEA} -o ${CTARGETA} ${LDFLAGS}
+#	${CC} ${CFLAGS} ${SOURCEB} -o ${CTARGETB} ${LDFLAGS}
 
 debug: ${SOURCE} ${INCLUDES}
 	${CC} ${CFLAGS_DEBUG} ${SOURCE} -o ${CTARGET} ${LDFLAGS} -DDEBUG
@@ -60,4 +64,4 @@ html:
 	rm -rf ${HTML}
 
 clean:
-	rm ${TEXTARGET}.dvi ${TEXTARGET}.log ${TEXTARGET}.out ${TEXTARGET}.ps ${TEXTARGET}.aux ${TEXTARGET}.pdf ${CTARGET}
+	rm ${TEXTARGET}.dvi ${TEXTARGET}.log ${TEXTARGET}.out ${TEXTARGET}.ps ${TEXTARGET}.aux ${TEXTARGET}.pdf ${CTARGETA} #${CTARGETB}
