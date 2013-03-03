@@ -1,13 +1,15 @@
 /*
  *      Author:  Jordan Bayles (baylesj), baylesj@engr.orst.edu
  *     Created:  02/22/2013 07:34:58 PM
- *    Filename:  sieve_of_atkin.c
+ *    Filename:  thread.c
  *
- * Description:  Basic (non-threaded or forked) Sieve of Atkin
+ * Description:  Threaded sieve of atkin + happy numbers
  */
 
 #include <assert.h>
+#include <errno.h>
 #include <math.h>
+#include <pthread.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -17,16 +19,29 @@
 
 #include "bst.h"
 
+typedef uint32_t chunk_t;
+
 #define CHUNK_SIZE (sizeof (chunk_t) * 8)
+#define THREAD_NUM 2
 
 /* Lookup table for squares of 0-9 for happy finding */
 const int squares[] = {0, 1, 4, 9, 16, 25, 36, 49, 64, 81};
 
-typedef uint8_t chunk_t;
+/* Shared variables (global for easy thread access */
+uint32_t lim; //UINT32_MAX;
+uint32_t sq_lim;
+uint32_t block;
+struct bitset *bs;
 
 struct bitset {
+	pthread_mutex_t *mutices;
 	chunk_t *chunks;
 	uint64_t n_chunks;
+};
+
+struct args {
+	uint32_t min;
+	uint32_t max;
 };
 
 /* Create and destroy bitsets */
@@ -52,6 +67,7 @@ uint64_t boffset (uint64_t idx)
 /* Create and destroy bitsets */
 struct bitset *bitset_alloc (uint64_t n_bits)
 {
+	int i;
 	struct bitset *bs = malloc (sizeof (*bs));
 
 	assert (bs != NULL);
@@ -59,6 +75,14 @@ struct bitset *bitset_alloc (uint64_t n_bits)
 	/* Calloc is faster than malloc + memset, better performance. */
 	bs->chunks = calloc (bs->n_chunks, sizeof (*bs->chunks));
 	assert (bs->chunks != NULL);
+	bs->mutices = calloc (bs->n_chunks, sizeof(pthread_mutex_t));
+	assert (bs->mutices != NULL);
+
+	for (i = 0; i < bs->n_chunks; ++i) {
+		if (pthread_mutex_init(&(bs->mutices[i]), NULL) > 0) {
+			perror("pthread_mutex_init");
+		}
+	}
 
 	return (bs);
 }
@@ -66,6 +90,9 @@ struct bitset *bitset_alloc (uint64_t n_bits)
 void bitset_free (struct bitset *bs)
 {
 	if (bs != NULL) {
+		if (bs->mutices != NULL) {
+			free (bs->mutices);
+		}
 		if (bs->chunks != NULL) {
 			free (bs->chunks);
 		}
@@ -77,43 +104,58 @@ void bitset_free (struct bitset *bs)
 void bit_set (struct bitset *bs, uint64_t idx)
 {
 	assert (bs != NULL);
+
+	pthread_mutex_lock(&(bs->mutices[bindex(idx)]));
 	bs->chunks[bindex(idx)] |= 1 << (boffset(idx));
+	pthread_mutex_unlock(&(bs->mutices[bindex(idx)]));
 }
 
 void bit_toggle (struct bitset *bs, uint64_t idx)
 {
 	assert (bs != NULL);
-	if (bit_get (bs, idx) != 0) {
-		bit_clear (bs, idx);
+
+	pthread_mutex_lock(&(bs->mutices[bindex(idx)]));
+	if (bs->chunks[bindex(idx)] & (1 << (boffset (idx)))) {
+		bs->chunks[bindex(idx)] &= ~(1 << (boffset (idx)));
 	} else {
-		bit_set (bs, idx);
+		bs->chunks[bindex(idx)] |= 1 << (boffset(idx));
 	}
+	pthread_mutex_unlock(&(bs->mutices[bindex(idx)]));
 }
 
 void bit_clear (struct bitset *bs, uint64_t idx)
 {
 	assert (bs != NULL);
+
+	pthread_mutex_lock(&(bs->mutices[bindex(idx)]));
 	bs->chunks[bindex(idx)] &= ~(1 << (boffset (idx)));
+	pthread_mutex_unlock(&(bs->mutices[bindex(idx)]));
 }
 
 chunk_t bit_get (struct bitset *bs, uint64_t idx)
 {
 	assert (bs != NULL);
-	return (bs->chunks[bindex(idx)] & (1 << (boffset (idx))));
+	chunk_t bit;
+
+	pthread_mutex_lock(&(bs->mutices[bindex(idx)]));
+	bit = (bs->chunks[bindex(idx)] & (1 << (boffset (idx))));
+	pthread_mutex_unlock(&(bs->mutices[bindex(idx)]));
+
+	return (bit);
 }
 
 /* Sieve functions */
-void candidate_primes(uint32_t lim, uint32_t sqrt_lim, struct bitset *bs,
-                      uint32_t min, uint32_t max)
+void *candidate_primes(void *arg)
 {
+	struct args *in = (struct args *)arg;
 	uint64_t n;
 	uint32_t x, y;
 	uint64_t x_sq, y_sq;
 
 	/* Put in candidate primes w/ odd num of reps */
-	for (x = min; x <= max; ++x) {
+	for (x = in->min; x <= in->max; ++x) {
 		x_sq = x * x;
-		for (y = 1; y <= sqrt_lim; ++y) {
+		for (y = 1; y <= sq_lim; ++y) {
 			y_sq = y * y;
 			n = 4 * x_sq + y_sq;
 
@@ -133,24 +175,28 @@ void candidate_primes(uint32_t lim, uint32_t sqrt_lim, struct bitset *bs,
 			}
 		}
 	}
+
+	return (NULL);
 }
 
-void eliminate_composites(uint32_t lim, uint32_t sqrt_lim, struct bitset *bs,
-                          uint32_t min, uint32_t max)
+void *eliminate_composites(void *arg)
 {
+	struct args *in = (struct args *)arg;
 	uint32_t k;
 	uint64_t n;
 	uint64_t n_sq;
 
 	/* Eliminate composites */
-	for (n = min; n <= max; ++n) {
-		if (bit_get (bs, n) != 0) {
+	for (n = in->min; n <= in->max; ++n) {
+		if (bit_get (bs, n)) {
 			n_sq = n * n;
 			for (k = n_sq; k < lim; k += n_sq) {
 				bit_clear (bs, k);
 			}
 		}
 	}
+
+	return (NULL);
 }
 
 /* Happy functions */
@@ -163,9 +209,7 @@ bool is_happy(uint32_t num) {
 	uint64_t sum = 1;
 	struct BSTree *seen = newBSTree();
 
-	//while (!found && !containsBSTree(seen, sum)) {
 	while (!happy && !repeating) {
-		/* One cycle here */
 		uint64_t mod = 10;
 		uint32_t modded;
 		sum = 0;
@@ -194,18 +238,37 @@ bool is_happy(uint32_t num) {
 	return (happy);
 }
 
-void determine_happies(uint32_t lim, uint32_t sqrt_lim, struct bitset *bs,
-                       uint32_t min, uint32_t max)
+void *determine_happies(void *arg)
 {
+	struct args *in = (struct args *)arg;
 	uint32_t n;
 
 	/* Remove primes that aren't happy */
-	for (n = min; n <= max; ++n) {
+	for (n = in->min; n <= in->max; ++n) {
 		if (bit_get (bs, n)) {
 			if (!is_happy(n)) {
 				bit_clear(bs, n);
 			}
 		}
+	}
+
+	return (NULL);
+}
+
+void spawn_threads(pthread_attr_t attr, void *(*func)(void *))
+{
+	pthread_t threads[THREAD_NUM];
+
+	for (int i = 0; i < THREAD_NUM; ++i) {
+		struct args arg;
+		arg.min = i * block;
+		arg.max = (i + 1) * block - 1;
+		if (pthread_create(&threads[i], &attr, (*func), (void *)&arg))
+			perror("pthread_create");
+	}
+
+	for (uint16_t i = 0; i < THREAD_NUM; ++i) {
+		pthread_join(threads[i], NULL);
 	}
 }
 
@@ -213,30 +276,30 @@ int main (int argc, char **argv)
 {
 	uint32_t cnt = 0;
 	uint64_t n;
-	uint32_t limit = UINT16_MAX;//UINT32_MAX;
-	struct bitset *bs = bitset_alloc (limit);
-	uint32_t sqrt_lim = (uint32_t) sqrt ((double)limit);
 
-	struct timeval start, end;
-	gettimeofday(&start, NULL);
-	candidate_primes(limit, sqrt_lim, bs, 1, sqrt_lim);
-	eliminate_composites(limit, sqrt_lim, bs, 5, sqrt_lim);
-	gettimeofday(&end, NULL);
+	/* Initialize globals */
+	lim = UINT32_MAX; //UINT32_MAX;
+	sq_lim = (uint32_t) sqrt ((double)lim);
+	block = (lim / THREAD_NUM);
 
-	printf("\ntotal prime time: %lis %lius\n", (end.tv_sec -  start.tv_sec),
-	                             (end.tv_usec - start.tv_usec));
+	bs = bitset_alloc (lim);
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
 
-	determine_happies(limit, sqrt_lim, bs, 0, limit);
+	spawn_threads(attr, candidate_primes);
+	spawn_threads(attr, eliminate_composites);
+	spawn_threads(attr, determine_happies);
 
 	/* Print primes */
 	//printf ("2, 3");
 	cnt = 2;
-	for (n = 5; n < limit; ++n) {
+	for (n = 5; n < lim; ++n) {
 		if (bit_get (bs, n)) {
 			//printf (", %u", n);
 			++cnt;
 		}
 	}
-	printf("\ncount : %lu\n", (unsigned long)cnt);
+	printf ("number of happy primes <%lu: %lu\n",
+	       (unsigned long)lim, (unsigned long)cnt);
 	bitset_free (bs);
 }

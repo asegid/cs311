@@ -6,7 +6,7 @@ CXXFLAGS = -Wall -openmp -O3 -g
 #overkill on the flags, but that doesn't hurt anything
 LDFLAGS = -lrt -lpthread
 #replace this if you want to change the output name
-CTARGETA = main
+CTARGETA = thread
 CTARGETB = forked
 TEXTARGET = writeup
 
@@ -19,7 +19,7 @@ INCLUDESA = bst.h
 INCLUDESB = 
 
 #any .c or .cpp files go here
-SOURCEA = main.c bst.c compare.c
+SOURCEA = thread.c bst.c compare.c
 SOURCEB = fork_sieve.c
 
 #default is to compile and pdf
