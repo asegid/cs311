@@ -22,7 +22,7 @@
 typedef uint32_t chunk_t;
 
 #define CHUNK_SIZE (sizeof (chunk_t) * 8)
-#define THREAD_NUM 2
+#define THREAD_NUM 16
 
 /* Lookup table for squares of 0-9 for happy finding */
 const int squares[] = {0, 1, 4, 9, 16, 25, 36, 49, 64, 81};
@@ -30,7 +30,6 @@ const int squares[] = {0, 1, 4, 9, 16, 25, 36, 49, 64, 81};
 /* Shared variables (global for easy thread access */
 uint32_t lim; //UINT32_MAX;
 uint32_t sq_lim;
-uint32_t block;
 struct bitset *bs;
 
 struct bitset {
@@ -67,7 +66,7 @@ uint64_t boffset (uint64_t idx)
 /* Create and destroy bitsets */
 struct bitset *bitset_alloc (uint64_t n_bits)
 {
-	int i;
+	uint32_t i;
 	struct bitset *bs = malloc (sizeof (*bs));
 
 	assert (bs != NULL);
@@ -134,8 +133,8 @@ void bit_clear (struct bitset *bs, uint64_t idx)
 
 chunk_t bit_get (struct bitset *bs, uint64_t idx)
 {
-	assert (bs != NULL);
 	chunk_t bit;
+	assert (bs != NULL);
 
 	pthread_mutex_lock(&(bs->mutices[bindex(idx)]));
 	bit = (bs->chunks[bindex(idx)] & (1 << (boffset (idx))));
@@ -176,7 +175,7 @@ void *candidate_primes(void *arg)
 		}
 	}
 
-	return (NULL);
+	pthread_exit(NULL);
 }
 
 void *eliminate_composites(void *arg)
@@ -196,7 +195,7 @@ void *eliminate_composites(void *arg)
 		}
 	}
 
-	return (NULL);
+	pthread_exit(NULL);
 }
 
 /* Happy functions */
@@ -252,43 +251,45 @@ void *determine_happies(void *arg)
 		}
 	}
 
-	return (NULL);
+	pthread_exit(NULL);
 }
 
-void spawn_threads(pthread_attr_t attr, void *(*func)(void *))
+void spawn_threads(pthread_attr_t attr, uint32_t min,
+                   uint32_t max, void *(*func)(void *))
 {
+	uint32_t i;
 	pthread_t threads[THREAD_NUM];
+	uint32_t block = ((max - min) / THREAD_NUM);
 
-	for (int i = 0; i < THREAD_NUM; ++i) {
+	for (i = 0; i < THREAD_NUM; ++i) {
 		struct args arg;
-		arg.min = i * block;
-		arg.max = (i + 1) * block - 1;
+		arg.min = i * block + min;
+		arg.max = (i + 1) * block - 1 + min;
 		if (pthread_create(&threads[i], &attr, (*func), (void *)&arg))
 			perror("pthread_create");
 	}
 
-	for (uint16_t i = 0; i < THREAD_NUM; ++i) {
+	for (i = 0; i < THREAD_NUM; ++i) {
 		pthread_join(threads[i], NULL);
 	}
 }
 
 int main (int argc, char **argv)
 {
+	pthread_attr_t attr;
 	uint32_t cnt = 0;
 	uint64_t n;
 
 	/* Initialize globals */
 	lim = UINT32_MAX; //UINT32_MAX;
 	sq_lim = (uint32_t) sqrt ((double)lim);
-	block = (lim / THREAD_NUM);
 
-	bs = bitset_alloc (lim);
-	pthread_attr_t attr;
 	pthread_attr_init(&attr);
+	bs = bitset_alloc (lim);
 
-	spawn_threads(attr, candidate_primes);
-	spawn_threads(attr, eliminate_composites);
-	spawn_threads(attr, determine_happies);
+	spawn_threads(attr, 1, sq_lim, candidate_primes);
+	spawn_threads(attr, 5, lim, eliminate_composites);
+	//spawn_threads(attr, 1, lim, determine_happies);
 
 	/* Print primes */
 	//printf ("2, 3");
