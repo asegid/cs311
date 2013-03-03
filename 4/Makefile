@@ -7,7 +7,7 @@ CXXFLAGS = -Wall -openmp -O3 -g
 LDFLAGS = -lrt -lpthread
 #replace this if you want to change the output name
 CTARGETA = thread
-CTARGETB = forked
+CTARGETB = fork
 TEXTARGET = writeup
 
 # LaTeX related constants
@@ -16,11 +16,11 @@ SRC=mt.h
 
 #any headers go here
 INCLUDESA = bst.h
-INCLUDESB = 
+INCLUDESB = bst.h
 
 #any .c or .cpp files go here
 SOURCEA = thread.c bst.c compare.c
-SOURCEB = fork_sieve.c
+SOURCEB = fork.c bst.c compare.c
 
 #default is to compile and pdf
 default: compile
@@ -30,7 +30,7 @@ both: pdf html
 compile: ${SOURCEA} ${INCLUDESA} 
 #this assumes you actually are linking all of the source files together
 	${CC} ${CFLAGS} ${SOURCEA} -o ${CTARGETA} ${LDFLAGS}
-#	${CC} ${CFLAGS} ${SOURCEB} -o ${CTARGETB} ${LDFLAGS}
+	${CC} ${CFLAGS} ${SOURCEB} -o ${CTARGETB} ${LDFLAGS}
 
 debug: ${SOURCE} ${INCLUDES}
 	${CC} ${CFLAGS_DEBUG} ${SOURCE} -o ${CTARGET} ${LDFLAGS} -DDEBUG
