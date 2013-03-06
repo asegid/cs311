@@ -20,6 +20,8 @@
 *.exe
 *.out
 *.app
+fork
+thread
 
 ### LaTeX ###
 *.acn
