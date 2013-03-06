@@ -14,10 +14,10 @@ HTML=main_html
 SRC=mt.h
 
 #any headers go here
-INCLUDES = bitset.h
+INCLUDES =
 
 #any .c or .cpp files go here
-SOURCE = sieve_of_atkin.c bitset.c
+SOURCE = sieve_of_atkin.c
 
 #default is to compile and pdf
 default: compile

@@ -1,7 +1,5 @@
 #include <stdio.h>
 #include "bst.h"
-#include "assert.h"
-#include "structs.h"
 
 /*----------------------------------------------------------------------------
  very similar to the compareTo method in java or the strcmp function in c. it

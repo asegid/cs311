@@ -27,17 +27,14 @@ Literals, macros (#define statements)
 /*-----------------------------------------------------------------------------
 Global variables
 -----------------------------------------------------------------------------*/
-struct Node
-{
-TYPE         val;
-struct Node *left;
-struct Node *right;
+struct Node {
+	TYPE val;
+	struct Node *left;
+	struct Node *right;
 };
-
-struct BSTree
-{
-struct Node *root;
-int          cnt;
+struct BSTree {
+	struct Node *root;
+	int cnt;
 };
 
 /*-----------------------------------------------------------------------------
@@ -50,11 +47,10 @@ Functions
  post:  tree size is 0
         root is null
  */
-void initBSTree( struct BSTree *tree )
+void initBSTree(struct BSTree *tree)
 {
-tree->cnt  = 0;
-tree->root = 0;
-
+	tree->cnt = 0;
+	tree->root = 0;
 }
 
 /*
@@ -64,15 +60,14 @@ tree->root = 0;
  post:  tree->count = 0
         tree->root = 0;
  */
-struct BSTree* newBSTree( )
+struct BSTree *newBSTree()
 {
-struct BSTree *tree = malloc( sizeof( struct BSTree ) );
-assert( tree != NULL );
-
-initBSTree( tree );
-return( tree );
-
+	struct BSTree *tree = malloc(sizeof(struct BSTree));
+	assert(tree != NULL);
+	initBSTree(tree);
+	return (tree);
 }
+
 
 /*
  Helper function to remove a node from the tree.
@@ -82,10 +77,9 @@ return( tree );
  param: node - the node to free
  pre:   node is not null
  */
-void _freeNode( struct Node *node )
+void _freeNode(struct Node *node)
 {
-free( node );
-
+	free(node);
 }
 
 /*
@@ -94,16 +88,15 @@ free( node );
  pre:   none
  post:  node and all descendants are deallocated
  */
-void _freeBST( struct Node *node )
+void _freeBST(struct Node *node)
 {
-if( node != NULL )
-    {
-    _freeBST( node->left );
-    _freeBST( node->right );
-    _freeNode( node );
-    }
-
+	if (node != NULL) {
+		_freeBST(node->left);
+		_freeBST(node->right);
+		_freeNode(node);
+	}
 }
+
 
 /*
  function to clear the nodes of a binary search tree
@@ -113,13 +106,12 @@ if( node != NULL )
         tree->root = 0;
         tree->cnt = 0
  */
-void clearBSTree( struct BSTree *tree )
+void clearBSTree(struct BSTree *tree)
 {
-assert( tree != NULL );
-_freeBST( tree->root );
-tree->root = 0;
-tree->cnt  = 0;
-
+	assert(tree != NULL);
+	_freeBST(tree->root);
+	tree->root = 0;
+	tree->cnt = 0;
 }
 
 /*
@@ -128,12 +120,11 @@ tree->cnt  = 0;
  pre:   tree != null;
  post:  all nodes and the tree structure itself are deallocated.
  */
-void deleteBSTree( struct BSTree *tree )
+void deleteBSTree(struct BSTree *tree)
 {
-assert( tree != NULL );
-clearBSTree( tree );
-free( tree );
-
+	assert(tree != NULL);
+	clearBSTree(tree);
+	free(tree);
 }
 
 /*
@@ -141,42 +132,43 @@ free( tree );
  param: tree - the binary search tree
  pre:  tree is not null
  */
-int isEmptyBSTree( struct BSTree *tree )
+int isEmptyBSTree(struct BSTree *tree)
 {
-assert( tree != NULL );
-return( tree->cnt == 0 );
-
+	assert(tree != NULL);
+	return (tree->cnt == 0);
 }
+
 
 /*
  function to determine the size of a binary search tree
  param: tree - the binary search tree
  pre:   tree is not null
  */
-int sizeBSTree( struct BSTree *tree )
+int sizeBSTree(struct BSTree *tree)
 {
-assert( tree != NULL );
-return( tree->cnt );
-
+	assert(tree != NULL);
+	return (tree->cnt);
 }
+
 
 /*
  Function that creates a new node and fills its value with input
  param:  val - the value to be added to the new node
  */
-struct Node * _initNode( TYPE val )
+struct Node *_initNode(TYPE val)
 {
+
 /* Create a new node to store the value of val */
-struct Node *val_node = malloc( sizeof( struct Node ) );
-assert( val_node != NULL );
-val_node->val = val;
+	struct Node *val_node = malloc(sizeof(struct Node));
+	assert(val_node != NULL);
+	val_node->val = val;
 
 /* Explicit is better than implicit, ensure NULL value */
-val_node->left = NULL;
-val_node->right = NULL;
-
-return( val_node );
+	val_node->left = NULL;
+	val_node->right = NULL;
+	return (val_node);
 }
+
 
 /*
  Recursive helper function to add a node to the binary search tree.
@@ -184,43 +176,44 @@ return( val_node );
          val - the value to be added to the binary search tree
  pre:    val is not null
  */
-struct Node * _addNode( struct Node *cur, TYPE val )
+struct Node *_addNode(struct Node *cur, TYPE val)
 {
+	if (cur == NULL) {
+		cur = _initNode(val);
+	}
 
-if( cur == NULL )
-    {
-    cur = _initNode( val );
-    }
-else
-    {
-    /* Note: a binary search tree is often considered an ordered set, i.e.
-     * no duplicates are allowed. However, after in class discussion, it is
-     * suggested that duplicates should be allowed, thus this implementation
-     * allows duplicate values to be inserted, on the RIGHT
-     */
-    switch( compare( val, cur->val ) )
-        {
-        /* val < cur->val */
-        case( -1 ):
-            cur->left = _addNode( cur->left, val );
-            break;
-        /* val = cur->val */
-        case( 0 ):             // DELIBERATE FALLTHROUGH
-        /* val > cur->val */
-        case( 1 ):
-            cur->right = _addNode( cur->right, val );
-            break;
-        default:
-            /* Should not reach this case under normal circumstances */
-            assert( NULL );
-            break;
-        }
-    }
+	else {
+
+		/* Note: a binary search tree is often considered an ordered set, i.e.
+		 * no duplicates are allowed. However, after in class discussion, it is
+		 * suggested that duplicates should be allowed, thus this implementation
+		 * allows duplicate values to be inserted, on the RIGHT
+		 */
+		switch (compare(val, cur->val)) {
+
+			/* val < cur->val */
+		case (-1):
+			cur->left = _addNode(cur->left, val);
+			break;
+
+			/* val = cur->val */
+		case (0):	// DELIBERATE FALLTHROUGH
+			/* val > cur->val */
+		case (1):
+			cur->right = _addNode(cur->right, val);
+			break;
+		default:
+
+			/* Should not reach this case under normal circumstances */
+			assert(NULL);
+			break;
+		}
+	}
 
 /* Original root should still be the root of the tree with val added */
-return( cur );
-
+	return (cur);
 }
+
 
 /*
  function to add a value to the binary search tree
@@ -231,12 +224,11 @@ return( cur );
  post:  tree size increased by 1
         tree now contains the value, val
  */
-void addBSTree( struct BSTree *tree, TYPE val )
+void addBSTree(struct BSTree *tree, TYPE val)
 {
-assert( tree != NULL );
-tree->root = _addNode( tree->root, val );
-tree->cnt++;
-
+	assert(tree != NULL);
+	tree->root = _addNode(tree->root, val);
+	tree->cnt++;
 }
 
 /*
@@ -247,33 +239,31 @@ tree->cnt++;
         val is not null
  post:  none
  */
-int containsBSTree( struct BSTree *tree, TYPE val )
+int containsBSTree(struct BSTree *tree, TYPE val)
 {
-assert( tree != NULL );
-struct Node *cur = tree->root;
+	assert(tree != NULL);
+	struct Node *cur = tree->root;
+	while (cur != NULL) {
+		switch (compare(val, cur->val)) {
+		case (-1):
+			cur = cur->left;
+			break;
+		case (0):
+			return (1);
+			break;
+		case (1):
+			cur = cur->right;
+			break;
+		default:
 
-while( cur != NULL )
-    {
-    switch( compare( val, cur->val ) )
-        {
-        case( -1 ):
-            cur = cur->left;
-            break;
-        case( 0 ):
-            return( 1 );
-            break;
-        case( 1 ):
-            cur = cur->right;
-            break;
-        default:
-            /* Should not reach this case under normal circumstances */
-            assert( NULL );
-            break;
-        }
-    }
-return( 0 );
-
+			/* Should not reach this case under normal circumstances */
+			assert(NULL);
+			break;
+		}
+	}
+	return (0);
 }
+
 
 /*
  helper function to find the left most child of a node's subtree
@@ -283,21 +273,20 @@ return( 0 );
  pre:   cur is not null
  post:  none
  */
-TYPE _leftMost( struct Node *cur )
+TYPE _leftMost(struct Node * cur)
 {
-assert( cur != NULL );
-struct Node *leftest = cur;
+	assert(cur != NULL);
+	struct Node *leftest = cur;
 
 /* Traverse to the leftmost child of the subtree beginning with root node at
  * curr
  */
-while( leftest->left != NULL )
-    {
-    leftest = leftest->left;
-    }
-return( leftest->val );
-
+	while (leftest->left != NULL) {
+		leftest = leftest->left;
+	}
+	return (leftest->val);
 }
+
 
 /*
  recursive helper function to remove the left most child of a node
@@ -308,23 +297,23 @@ return( leftest->val );
  pre:   cur is not null
  post:  the left most node of cur is not in the tree
  */
-struct Node * _removeLeftMost( struct Node *cur )
+struct Node *_removeLeftMost(struct Node *cur)
 {
-assert( cur != NULL );
+	assert(cur != NULL);
 
 /* cur is the parent of the leftmost child */
-if( cur->left == NULL )
-    {
-    struct Node *tmp = cur;
-    _freeNode( cur );
-    return( tmp->right );
-    }
-else
-    {
-    cur->left = _removeLeftMost( cur->left );
-    return( cur );
-    }
+	if (cur->left == NULL) {
+		struct Node *tmp = cur;
+		_freeNode(cur);
+		return (tmp->right);
+	}
+
+	else {
+		cur->left = _removeLeftMost(cur->left);
+		return (cur);
+	}
 }
+
 
 /*
  recursive helper function to remove a node from the tree
@@ -335,54 +324,55 @@ else
         cur is not null
         val is not null
  */
-struct Node * _removeNode(struct Node *cur, TYPE val)
+struct Node *_removeNode(struct Node *cur, TYPE val)
 {
-assert( cur != NULL );
+	assert(cur != NULL);
+	switch (compare(val, cur->val)) {
+	case (-1):
+		cur->left = _removeNode(cur->left, val);
+		break;
+	case (1):
+		cur->right = _removeNode(cur->right, val);
+		break;
+	case (0):
+		{
+			struct Node *tmp = NULL;
 
-switch( compare( val, cur->val ) )
-    {
-    case( -1 ):
-        cur->left = _removeNode( cur->left, val );
-        break;
-    case( 1 ):
-        cur->right = _removeNode( cur->right, val );
-        break;
-    case( 0 ):
-        {
-        struct Node *tmp = NULL;
-        /* Found a match, so remove this node */
-        if( cur->left == NULL )
-            {
-            tmp = cur->right;
-            _freeNode( cur );
-            }
-        else if( cur->right == NULL )
-            {
-            tmp = cur->left;
-            _freeNode( cur );
-            }
-        else
-            {
-            /* Get the leftmost child's value of the right subtree, and
-             * remove the leftmost child before shifting it into place.
-             */
-            tmp = _initNode( _leftMost( cur->right ) );
-            _removeLeftMost( cur->right );
-            /* Set pointer data for tmp */
-            tmp->right = cur->right;
-            tmp->left = cur->left;
-            }
-        return( tmp );
-        }
-        break;
-    default:
-        /* Should not reach this case under normal circumstances */
-        assert( NULL );
-        break;
-    }
-return( NULL );
+			/* Found a match, so remove this node */
+			if (cur->left == NULL) {
+				tmp = cur->right;
+				_freeNode(cur);
+			}
 
+			else if (cur->right == NULL) {
+				tmp = cur->left;
+				_freeNode(cur);
+			}
+
+			else {
+
+				/* Get the leftmost child's value of the right subtree, and
+				 * remove the leftmost child before shifting it into place.
+				 */
+				tmp = _initNode(_leftMost(cur->right));
+				_removeLeftMost(cur->right);
+
+				/* Set pointer data for tmp */
+				tmp->right = cur->right;
+				tmp->left = cur->left;
+			}
+			return (tmp);
+		}
+		break;
+	default:
+
+		/* Should not reach this case under normal circumstances */
+		assert(NULL);
+		break;
+	}
+	return (NULL);
 }
+
 
 /*
  function to remove a value from the binary search tree
@@ -393,44 +383,40 @@ return( NULL );
         val is in the tree
  pose:  tree size is reduced by 1
  */
-void removeBSTree( struct BSTree *tree, TYPE val )
+void removeBSTree(struct BSTree *tree, TYPE val)
 {
-if( containsBSTree( tree, val ) )
-    {
-    tree->root = _removeNode( tree->root, val );
-    tree->cnt--;
-    }
-
+	if (containsBSTree(tree, val)) {
+		tree->root = _removeNode(tree->root, val);
+		tree->cnt--;
+	}
 }
+
 
 /*-----------------------------------------------------------------------------
 Debugging Functions
 -----------------------------------------------------------------------------*/
 #ifdef DEBUG
 #include <stdio.h>
-
-void printNode( struct Node *cur )
+void printNode(struct Node *cur)
 {
-if( cur == NULL )
-    {
-    return;
-    }
-printf( "(" );
-printNode( cur->left );
+	if (cur == NULL) {
+		return;
+	}
+	printf("(");
+	printNode(cur->left);
 
 /* print_type prints the value of the TYPE */
-print_type( cur->val );
-printNode( cur->right );
-printf( ")" );
-
+	print_type(cur->val);
+	printNode(cur->right);
+	printf(")");
 }
 
-void printTree( struct BSTree *tree )
+void printTree(struct BSTree *tree)
 {
-if( tree != NULL )
-    {
-    printNode( tree->root );
-    }
-
+	if (tree != NULL) {
+		printNode(tree->root);
+	}
 }
-#endif
+
+
+#endif				/*  */
