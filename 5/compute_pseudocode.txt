@@ -1,0 +1,15 @@
+
+
+compute (number n)
+	sq = sqrt (n)
+	
+	# max "min pair element" is sq
+	for div in 1..sq
+		if n mod div is zero
+			add div to props
+			add n mod div to props
+	
+	if sum(props) is n
+		return n is proper
+		
+	return n is not proper

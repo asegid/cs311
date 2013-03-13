@@ -1,6 +1,6 @@
 CC = icc
 CXX = icpc
-CFLAGS = -Wall -std=gnu99 -openmp -O3 -g -I.
+CFLAGS = -Wall -std=gnu99 -openmp -O2 -g -I.
 CFLAGS_DEBUG = -Wall -std=gnu99 -openmp -O0 -g -I.
 CXXFLAGS = -Wall -openmp -O3 -g
 #overkill on the flags, but that doesn't hurt anything
@@ -20,11 +20,11 @@ INCLUDES =
 SOURCE = compute.c
 
 #default is to compile and pdf
-default: compile pdf
+default: compile
 both: pdf html
 
 #depends on all of you source and header files
-compile: ${SOURCE} ${INCLUDES}`
+compile: ${SOURCE} ${INCLUDES}
 #this assumes you actually are linking all of the source files together
 	${CC} ${CFLAGS} ${SOURCE} -o ${CTARGET} ${LDFLAGS}
 
@@ -60,4 +60,4 @@ html:
 	rm -rf ${HTML}
 
 clean:
-	rm ${TEXTARGET}.dvi ${TEXTARGET}.log ${TEXTARGET}.out ${TEXTARGET}.ps ${TEXTARGET}.aux ${TEXTARGET}.pdf ${CTARGETA} ${CTARGETB}
+	rm ${TEXTARGET}.dvi ${TEXTARGET}.log ${TEXTARGET}.out ${TEXTARGET}.ps ${TEXTARGET}.aux ${TEXTARGET}.pdf ${CTARGET}

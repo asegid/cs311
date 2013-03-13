@@ -1,0 +1,32 @@
+// MCGRATH
+int j = 10;
+int k;
+
+clock();
+for (int i = 0; i < SOME RANDOM UPPER LIMIT; ++i)
+	k = j % i;
+clock();
+
+// Does this get optimised out to the last value in loop?
+
+// MY SHIT
+get start time
+--
+operations done = do a big number of operations
+
+array[1000];
+for (int i = 0; i < 1000; ++i) {
+	array[ i ] = 0;
+	for (int j = 0; j < 1000; ++j) {
+		array[i] += j;
+	}
+}
+
+a += 1000;
+
+--
+get end time
+
+total time = end - start
+
+FLOPS = operations done / total time

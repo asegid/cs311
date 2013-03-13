@@ -1,0 +1,43 @@
+# Way to do this:
+# Determine number of operations involved with calculating if a number is perfect
+# This is a sqrt(n) type algorithm, considering scaling this in assignment
+# Assign 15 seconds * (ops in number is perfect / performance stats of client) * SCALING
+
+# Timing loop pseudocode
+struct performance
+	double iops   #integer operations per second
+	double flops  #floating point operations per second
+
+start = current time
+for 0..LOOP_NUM
+	int = a + b # How optimized
+end = current time
+
+# Calculate integer operations per second
+perf.iops = (LOOP_NUM) / (end - start) 
+
+start = current time
+for 0..LOOP_NUM
+	float = a + b
+end = current time
+
+# Calculate floating point operations per second
+perf.flops = (LOOP_NUM) / (end - start) 
+
+
+# Alternatively
+start = current time
+for 0..LOOP_NUM
+	int = a + b
+	int = a * b
+	int = a - b
+	int = a / b
+	float = a + b
+	float = a * b
+	float = a - b
+	float = a / b
+	int = a % b
+	float = a % b
+end = current time
+
+performance stat = (LOOP_NUM) / (end - start)
