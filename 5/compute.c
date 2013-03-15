@@ -27,6 +27,7 @@
 #include <unistd.h>
 
 /** Local Includes */
+#include "jsmn.h"
 
 /** Literal constants */
 #define LISTEN_Q 1024
@@ -36,7 +37,7 @@
 /* Only 8 perfect numbers in 0..UINT64_MAX */
 #define NUM_PERFECT 8
 
-#define HOME "127.0.0.1"
+#define HOME "localhost"
 #define CALC_PORT 44479
 #define CALC_PORT_STR "44479"
 #define CTRL_PORT 44480
@@ -196,6 +197,7 @@ void poll_server(void)
 int init_socket(uint16_t port)
 {
 	int sock_fd;
+	struct hostent local;
 	struct sockaddr_in serv_addr;
 
 	sock_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -203,9 +205,11 @@ int init_socket(uint16_t port)
 
 	serv_addr.sin_family = AF_INET;
 	serv_addr.sin_port = htons(port);
-	
-	if (inet_pton(AF_INET, HOME, &serv_addr.sin_addr) == -1)
-		perror("inet_pton");
+
+	if (gethostbyname(&local) == NULL)
+		perror("gethostbyname");
+
+	serv_addr.sin_addr.s_addr = *((unsigned long *)local->h_addr);
 
 	if (connect(sock_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == -1)
 		perror("connect");
