@@ -18,13 +18,13 @@ __email__ = "baylesj@engr.orst.edu"
 __credits__ = "Meghan Gorman (algorithm development)"
 
 # Constants
-BUF_SIZE 4096
+BUF_SIZE = 4096
 HOME = "localhost"
 PORT = 44479
 
 def init_socket():
     sock_fd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock_fd.connect((HOST, PORT))
+    sock_fd.connect((HOME, PORT))
 
     get_data(sock_fd)
     ack(sock_fd)
@@ -32,12 +32,15 @@ def init_socket():
     return sock_fd
 
 def ack(socket):
+    print("Requesting acknowledgment from server")
     socket.send(json.dumps({"orig": "rep", "type": "ack"}))
 
-def kill(socket)
+def kill(socket):
+    print("Sending kill order to server")
     socket.send(json.dumps({"orig": "rep", "type": "kill"}))
 
 def req(socket):
+    print("Requesting the current status of server")
     socket.send(json.dumps({"orig": "rep", "type": "req"}))
 
 def get_data(socket):

@@ -5,14 +5,10 @@ the active compute processes, so that it can signal them to terminate,
 including the host name and performance characteristics.
 """
 
-# Imports (built in)
 import json
 import select
 import signal
 import sys
-
-# Imports (third party)
-# Imports (personal)
 
 __author__ = "Jordan Bayles (baylesj)"
 __email__ = "baylesj@engr.orst.edu"
@@ -25,6 +21,29 @@ MAX_BACKLOG = 5
 PORT = 44479
 
 # Functions
+def get_data(socket):
+    received = sock.recv(BUF_SIZE)
+    return (received.strip().split("\n"))
+
+def ack_get(socket, comps, comp_mons):
+    packets = get_data(socket)
+
+    host, port = socket.getpeername()
+    for packet in packets:
+        if packet["type"] == "ack":
+            if packet["orig"] == "cmp":
+                print("compute joined from", host, ":", port)
+                comps[host] = packet["flops"]
+
+            elif packet["orig"] == "cmp_mon":
+                print("compute monitor joined from", host, ":", port)
+                comp_mons.append(socket)
+
+            elif packet["orig"] == "rep":
+                print("report requested by", host, ":", port)
+
+def ack_send(socket):
+    socket.send(json.dumps({"orig": "man", "type": "ack"}))
 
 def create_sockets():
     serv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -45,9 +64,9 @@ def kill_computes(murderers):
     pass
 
 def main():
-    computes = []
+    dict computes
+    compute_mons = []
     cur_idx = 0
-    murderers = []
     max_number = 0xFFFF # 16 bit max
     perfects = []
 
