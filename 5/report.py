@@ -33,15 +33,15 @@ def init_socket():
 
 def ack(sock):
     print("Requesting acknowledgment from server")
-    sock.send(json.dumps({"orig": "rep", "type": "ack"}).encode('utf-8'))
+    sock.send((json.dumps({"orig": "rep", "type": "ack"})+"\n").encode('utf-8'))
 
 def kill(sock):
     print("Sending kill order to server")
-    sock.send(json.dumps({"orig": "rep", "type": "kill"}).encode('utf-8'))
+    sock.send((json.dumps({"orig": "rep", "type": "kill"})+"\n").encode('utf-8'))
 
 def req(sock):
     print("Requesting the current status of server")
-    sock.send(json.dumps({"orig": "rep", "type": "req"}).encode('utf-8'))
+    sock.send((json.dumps({"orig": "rep", "type": "req"})+"\n").encode('utf-8'))
 
 def get_packets(sock):
     received = sock.recv(BUF_SIZE).decode('utf-8')
@@ -77,7 +77,7 @@ def main():
             print(repr(num))
 
     if ordered_to_kill():
-        kill()
+        kill(sock)
 
 if __name__ == "__main__":
     main()

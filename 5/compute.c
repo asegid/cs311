@@ -36,8 +36,13 @@
 #define MAX_LINE 4096
 #define MAX_SOCK_ADDR 128
 
+#define PKT_FIELD_LEN 10
+#define TOK_NUM 64
+
 /* Only 8 perfect numbers in 0..UINT64_MAX */
 #define NUM_PERFECT 8
+
+#define EMPTY_FLAG 0
 
 #define HOME "localhost"
 #define CALC_PORT 44479
@@ -52,20 +57,129 @@
 	 && (t).end == tok_end  \
 	 && (t).type == (tok_type))
 
+#define TOKEN_GETSTR(js, t) (js + t.start)
+
+#define TOKEN_PRINT(t) \
+	printf("start: %d, end: %d, type: %d, size: %d\n", \
+	       (t).start, (t).end, (t).type, (t).size)
+
 #define TOKEN_STRCMP(js, t, s) \
 	(strncmp(js+(t).start, s, (t).end - (t).start) == 0 \
 	 && strlen(s) == (t).end - (t).start)
 
-#define TOKEN_PRINT(t) \
-	printf("start: %d, end: %d, type: %d, size: %d\n", \
-			(t).start, (t).end, (t).type, (t).size)
+#define TOKEN_VALID(t) ((t.start >= 0) && (t.end > t.start))
 
-#define TOKEN_VALID(t) \
-	((t->start != -1) && (t->end != -1))
+#define TOKEN_SIZE(t) (t.end - t.start)
+
+
+/** Type definitions */
+struct pkt_data {
+	char orig[PKT_FIELD_LEN];
+	char type[PKT_FIELD_LEN];
+	uint64_t min;
+	uint64_t max;
+	double flops;
+};
 
 /** Global variables */
 uint8_t cnt = 0;
 uint64_t perfects[NUM_PERFECT];
+
+/** Functions */
+int main(int argc,char **argv);
+void poll_server(int sock_fd);
+int forkitor(void);
+void monitor(void);
+void compute_range(int sock_fd, uint64_t min,uint64_t max);
+bool compute(uint64_t n);
+double calc_perf(void);
+void handle_ack(int sock_fd,char *ack_str);
+int init_socket(uint16_t port);
+struct pkt_data fill_packet(char *json);
+void clear_packet(struct pkt_data *pkt);
+void jsmn_err(int ret);
+
+void jsmn_err(int ret)
+{
+	fprintf(stderr, "jsmn_parse: ");
+	switch (ret) {
+	case JSMN_ERROR_NOMEM:
+		fprintf(stderr, "Not enough token were provided\n");
+		break;
+	case JSMN_ERROR_INVAL:
+		fprintf(stderr, "Invalid character inside JSON string\n");
+		break;
+	case JSMN_ERROR_PART:
+		fprintf(stderr, "The string is not a full JSON packet, "
+		                "more bytes expected\n");
+		break;
+	case JSMN_SUCCESS:
+		fprintf(stderr, "Success\n");
+		break;
+	/* Should NOT be reached */
+	default:
+		fprintf(stderr, "Unknown error occurred\n");
+		break;
+	}
+}
+
+void clear_packet(struct pkt_data *pkt)
+{
+	assert(pkt != NULL);
+
+	pkt->orig[0] = '\0';
+	pkt->type[0] = '\0';
+	pkt->min = -1;
+	pkt->max = -1;
+	pkt->flops = -1.0f;
+}
+
+struct pkt_data fill_packet(char *json)
+{
+	uint8_t idx = 0;
+	char *key_ptr;
+	jsmn_parser parser;
+	struct pkt_data pkt;
+	int r;
+	int sz;
+	jsmntok_t tokens[TOK_NUM];
+	char val[MAX_LINE];
+
+	assert(json != NULL);
+	clear_packet(&pkt);
+	jsmn_init(&parser);
+	r = jsmn_parse(&parser, json, tokens, TOK_NUM);
+	if (r != JSMN_SUCCESS)
+		jsmn_err(r);
+
+	/* Last valid key is (last index) - 1 */
+	while (TOKEN_VALID(tokens[idx + 1])) {
+		/* get size of next tok. If key/val pair then val */
+		sz = TOKEN_SIZE(tokens[idx + 1]);
+		key_ptr = TOKEN_GETSTR(json, tokens[idx + 1]);
+		strncpy(val, key_ptr, sz);
+		val[sz] = '\0';
+
+		if (TOKEN_STRCMP(json, tokens[idx], "orig")) {
+			strcpy(pkt.orig, val);
+		} else if (TOKEN_STRCMP(json, tokens[idx], "type")) {
+			strcpy(pkt.type, val);
+		} else if (TOKEN_STRCMP(json, tokens[idx], "min")) {
+			pkt.min = (uint64_t) atoll(val);
+		} else if (TOKEN_STRCMP(json, tokens[idx], "max")) {
+			pkt.max = (uint64_t) atoll(val);
+		} else if (TOKEN_STRCMP(json, tokens[idx], "flops")) {
+			pkt.flops = atof(val);
+		} else {
+			/* Instead of jumping by two, we need to check next */
+			idx -= 1;
+		}
+		/* Advance index and assign cur */
+		idx += 2;
+	}
+
+	return (pkt);
+}
 
 /* Initialize socket for data sending */
 int init_socket(uint16_t port)
@@ -95,15 +209,21 @@ int init_socket(uint16_t port)
 void handle_ack(int sock_fd, char *ack_str)
 {
 	char buf[MAX_LINE];
-	if (write(sock_fd, ack_str, strlen(ack_str)) == -1)
-		perror("write");
-	if (read(sock_fd, buf, MAX_LINE) != 0)
-		perror("read");
+	struct pkt_data pkt;
+	int len;
 
+	if (send(sock_fd, ack_str, strlen(ack_str), EMPTY_FLAG) == -1)
+		perror("send");
+	if ((len = recv(sock_fd, buf, MAX_LINE, EMPTY_FLAG)) == -1)
+		perror("recv");
 
+	buf[len] = '\0';
+	pkt = fill_packet(buf);
+	if ((strcmp(pkt.orig, "man") != 0) || (strcmp(pkt.type, "ack") != 0))
+		printf("wrong packet read! wanted: ack, got: %s\n", pkt.type);
 }
 
-/** Functions */
+
 /* Calculate performance (FLOPS...ish...) */
 double calc_perf (void)
 {
@@ -127,7 +247,8 @@ double calc_perf (void)
 	           (double) (finish.tms_utime - start.tms_utime) / 1000000.0f) /
 	           sysconf(_SC_CLK_TCK);
 
-	return ((TIME_LOOPS * TIME_LOOPS) / elapsed);
+	//return ((TIME_LOOPS * TIME_LOOPS) / elapsed);
+	return (1500);
 }
 
 /* Determine if n is a perfect number */
@@ -170,27 +291,49 @@ bool compute (uint64_t n)
 	return (is_perfect);
 }
 
+/* Compute numbers wrapper */
+void compute_range(int sock_fd, uint64_t min, uint64_t max)
+{
+	uint64_t i;
+	char pkt[MAX_LINE];
+
+	for (i = min; i <= max; ++i) {
+		if (compute(i)) {
+			perfects[cnt] = i;
+			/* Send packet over connection containing number */
+			sprintf(pkt, "{\"orig\":\"cmp\", \"type\":\"add\", \"val\": %lu}\n", i);
+			printf("\nsending: %s\n", pkt);
+			send(sock_fd, pkt, strlen(pkt), EMPTY_FLAG);
+			printf(" %lu ", (unsigned long)i);
+			++cnt;
+		}
+	}
+}
+
 /* Monitor socket (forked) */
 void monitor(void)
 {
 	char buf[MAX_LINE];
-	jsmntok_t *cur;
-	int idx;
+	int len;
+	struct pkt_data pkt;
 	pid_t parent_pid = getppid();
 	int sock_fd;
-	struct sockaddr_in serv_addr;
 
 	/* Connect to manage server */
 	sock_fd = init_socket(CALC_PORT);
+	handle_ack(sock_fd, "{\"orig\": \"cmp_mon\", \"type\": \"ack\"}\n");
 
-	char req[] = "{\"orig\": \"cmp_mon\", \"type\": \"ack\"}";
-	handle_ack(req);
-
-	/* TODO Interpret and set */
-
-	kill(parent_pid, SIGQUIT);
-	wait(NULL);
-	exit(EXIT_FAILURE);
+	for ( ; ; ) {
+		if ((len = recv(sock_fd, buf, MAX_LINE, EMPTY_FLAG)) == -1)
+			perror("recv");
+		buf[len] = '\0';
+		pkt = fill_packet(buf);
+		if ((strcmp(pkt.orig, "man") == 0) && (strcmp(pkt.type, "kill"))) {
+			kill(parent_pid, SIGQUIT);
+			wait(NULL);
+			exit(EXIT_FAILURE);
+		}
+	}
 }
 
 /* Fork monitor */
@@ -215,88 +358,57 @@ int forkitor(void)
 	return (child_pid);
 }
 
-/* Compute numbers wrapper */
-compute_range(uint64_t min, uint64_t max)
-{
-	uint64_t i;
-
-	for (i = min; i <= max; ++i) {
-		if (compute(i)) {
-			perfects[cnt] = i;
-			++cnt;
-		}
-	}
-}
-
 /* Handle server I/O for number computation */
-void poll_server(void)
+void poll_server(int sock_fd)
 {
-	char *buf = malloc(MAX_LINE * sizeof(char));
-	jsmntok_t *cur;
+	char buf[MAX_LINE];
 	double flops = calc_perf();
-	int idx = 0;
-	uint64_t min;
-	uint64_t max;
-	jsmn_parser parser;
-	char req[] = "{\"orig\": \"cmp\", \"type\": \"req\" \"flops\": %lf}";
-	int sock_fd;
-	jsmntok_t tokens[256];
+	int len;
+	struct pkt_data pkt;
 	bool valid_range_given = false;
-	char val[80];
+	char req[MAX_LINE];
+	char ack[MAX_LINE];
 
-	sprintf(val, req, flops);
+	sprintf(ack, "{\"orig\": \"cmp\", \"type\": \"ack\", \"flops\": %lf}\n", flops);
+	handle_ack(sock_fd, ack);
 
+	sprintf(req, "{\"orig\": \"cmp\", \"type\": \"req\", \"flops\": %lf}\n", flops);
 	do {
-		if (write(sock_fd, val, strlen(val)) == -1)
-			perror("write");
-		if (read(sock_fd, buf, MAX_LINE) != 0)
-			perror("read");
-		jsmn_init(&parser);
-		if (jsmn_parse(&parser, buf, tokens, 256) != JSMN_SUCCESS)
-			printf("jsmn_parse: Error\n");
-		idx = 0;
-		cur = &tokens[idx];
+		printf("\nsending: %s\n", req);
+		if (send(sock_fd, req, strlen(req), EMPTY_FLAG) == -1)
+			perror("send");
+		if ((len = recv(sock_fd, buf, MAX_LINE, EMPTY_FLAG)) == -1)
+			perror("recv");
 
-		while (TOKEN_VALID(cur)) {
-			/* Grab min/max key, get then value from child */
-				if (TOKEN_STRCMP(buf, *cur, "min")) {
-					/* Key val pair means value next tok */
-					++idx;
-					cur = &tokens[idx];
-					strncpy(val, (buf+cur->start),
-							cur->end - cur->start);
-					min = atol(val);
-				}
-				if (TOKEN_STRCMP(buf, *cur, "max")) {
-					/* Key val pair means value next tok */
-					++idx;
-					cur = &tokens[idx];
-					strncpy(val, (buf+cur->start),
-							cur->end - cur->start);
-					max = atol(val);
-				}
+		printf("\nbuffer: %s\n", buf);
+		buf[len] = '\0';
+		pkt = fill_packet(buf);
+
+		if ((strcmp(pkt.orig, "man") == 0)
+		  &&(strcmp(pkt.type, "rng") == 0)) {
+			valid_range_given = (pkt.min >= 0) && (pkt.max > pkt.min);
+			if (valid_range_given) {
+				printf("compute_range: %lu, %lu\n", pkt.min, pkt.max);
+				compute_range (sock_fd, pkt.min, pkt.max);
 			}
-			++idx;
-			cur = &tokens[idx];
-		}
-
-		valid_range_given = ((min >= 0) && (max > min));
-		if (valid_range_given)
-			compute_range (min, max);
+		 }
 	} while (valid_range_given);
 }
 
 /* Run subprograms */
 int main(int argc, char **argv)
 {
-	double user;
-	double sys;
-	struct tms finish;
+	//double user;
+	//double sys;
+	//struct tms finish;
 	int sock_fd = init_socket(CALC_PORT);
-	struct tms start;
+	//struct tms start;
 
 	printf("Performance (~FLOPS): %g\n", calc_perf());
 
+	poll_server(sock_fd);
+
+	/*
 	(void)times(&start);
 	compute_range(1, UINT16_MAX);
 	(void)times(&finish);
@@ -307,7 +419,7 @@ int main(int argc, char **argv)
 
 	for (int i = 0; i < cnt; ++i)
 		printf(" %lu ", perfects[i]);
-
+	*/
 
 	return (EXIT_SUCCESS);
 }
