@@ -23,28 +23,28 @@ HOME = "localhost"
 PORT = 44479
 
 def init_socket():
-    sock_fd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock_fd.connect((HOME, PORT))
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect((HOME, PORT))
 
-    get_data(sock_fd)
-    ack(sock_fd)
+    get_packets(sock)
+    ack(sock)
 
-    return sock_fd
+    return sock
 
-def ack(socket):
+def ack(sock):
     print("Requesting acknowledgment from server")
-    socket.send(json.dumps({"orig": "rep", "type": "ack"}))
+    sock.send(json.dumps({"orig": "rep", "type": "ack"}).encode('utf-8'))
 
-def kill(socket):
+def kill(sock):
     print("Sending kill order to server")
-    socket.send(json.dumps({"orig": "rep", "type": "kill"}))
+    sock.send(json.dumps({"orig": "rep", "type": "kill"}).encode('utf-8'))
 
-def req(socket):
+def req(sock):
     print("Requesting the current status of server")
-    socket.send(json.dumps({"orig": "rep", "type": "req"}))
+    sock.send(json.dumps({"orig": "rep", "type": "req"}).encode('utf-8'))
 
-def get_data(socket):
-    recieved = sock.recv(BUF_SIZE)
+def get_packets(sock):
+    received = sock.recv(BUF_SIZE).decode('utf-8')
     return (received.strip().split("\n"))
 
 def ordered_to_kill():
@@ -61,12 +61,11 @@ def main():
     signal.signal(signal.SIGINT, handler)
     signal.signal(signal.SIGQUIT, handler)
 
-    sock_fd = init_socket()
-    req(sock_fd)
-    packets = get_data(sock_fd)
+    sock = init_socket()
+    req(sock)
+    packets = get_packets(sock)
 
     for packet in packets:
-        # {"clients":{"name": ops, ...}, "perfects":[]}
         obj = json.loads(packet)
 
         print("Compute clients (active)")
@@ -74,7 +73,7 @@ def main():
             print("Hostname: ", client, "Performance: ", obj["clients"][client])
 
         print("Found numbers:")
-        for num in obj["perfects"]:
+        for num in obj["perfs"]:
             print(repr(num))
 
     if ordered_to_kill():

@@ -4,7 +4,8 @@ CFLAGS = -Wall -std=gnu99 -openmp -O2 -g -I.
 CFLAGS_DEBUG = -Wall -std=gnu99 -openmp -O0 -g -I.
 CXXFLAGS = -Wall -openmp -O3 -g
 #overkill on the flags, but that doesn't hurt anything
-LDFLAGS = -lrt -lpthread
+#add current dir to libs for libjsmn.a
+LDFLAGS = -lrt -lpthread -L. -ljsmn
 #replace this if you want to change the output name
 CTARGET = compute
 TEXTARGET = writeup
