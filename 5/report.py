@@ -61,6 +61,7 @@ def main():
     signal.signal(signal.SIGINT, handler)
     signal.signal(signal.SIGQUIT, handler)
 
+    print("Waiting for server... (this might take a bit if its busy)")
     sock = init_socket()
     req(sock)
     packets = get_packets(sock)
@@ -73,8 +74,13 @@ def main():
             print("Hostname: ", client, "Performance: ", obj["clients"][client])
 
         print("Found numbers:")
-        for num in obj["perfs"]:
-            print(repr(num))
+        try:
+            for num in obj["perfs"]:
+                print(repr(num), " ", end="")
+        except TypeError:
+            print("No numbers found")
+        except Exception as e:
+            print(e)
 
     if ordered_to_kill():
         kill(sock)

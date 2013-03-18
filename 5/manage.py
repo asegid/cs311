@@ -19,6 +19,7 @@ __credits__ = "Meghan Gorman (algorithm development)"
 
 # Constants
 BUF_SIZE = 4096
+FLOP_CALIBRATION = .000000005
 HOME = "localhost"
 MAX_BACKLOG = 5
 PORT = 44479
@@ -37,7 +38,6 @@ def ack_get(sock, comps, comp_mons):
         for packet in packets:
             if not packet:
                 continue
-            print("TMPreceived", packet)
             obj = json.loads(packet)
             if obj["type"] == "ack":
                 if obj["orig"] == "cmp":
@@ -56,7 +56,7 @@ def ack_get(sock, comps, comp_mons):
         print(traceback.print_exc())
 
 def ack_send(sock):
-    sock.send(json.dumps({"orig": "man", "type": "ack"}).encode('utf-8'))
+    sock.send((json.dumps({"orig": "man", "type": "ack"})+"\n").encode('utf-8'))
 
 def create_socks():
     serv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -68,7 +68,7 @@ def create_socks():
     return (serv_sock)
 
 def get_range(cur_val, glob_max, flops):
-    total_flops = flops * RUN_TIME
+    total_flops = flops * RUN_TIME * FLOP_CALIBRATION
     ops = 0
     idx = cur_val + 1
 
@@ -77,8 +77,6 @@ def get_range(cur_val, glob_max, flops):
         # Constant time operations from 1..sqrt(num)
         ops += sqrt(idx)
         idx += 1
-    print("ops:", ops, ", total_flops:", total_flops, ", idx:", idx)
-    print("cur_val + 1:", cur_val + 1, ", idx:", idx, ", glob_max:", glob_max)
     return (cur_val + 1, min(idx, glob_max))
 
 def handle_compute(obj, packet, sock, computes, perfects, cur_val, glob_max):
@@ -86,14 +84,12 @@ def handle_compute(obj, packet, sock, computes, perfects, cur_val, glob_max):
     host, port = sock.getpeername()
 
     if obj["type"] == "req":
-        print("manage.py: handling cmp req")
         flops = float(obj["flops"])
         computes[host] = flops
-        print("manage.py: finding range")
         min_val, max_val = get_range(cur_val, glob_max, flops)
         print("manage.py: sending range", min_val, max_val)
-        sock.send(json.dumps({"orig": "man", "type": "rng",
-                              "min": min_val, "max": max_val}).encode('utf-8'))
+        sock.send((json.dumps({"orig": "man", "type": "rng",
+                              "min": min_val, "max": max_val})+"\n").encode('utf-8'))
     elif obj["type"] == "add":
         perfects.add(int(obj["val"]))
 
@@ -103,18 +99,17 @@ def handle_report(obj, packet, sock, computes, perfects, compute_mons):
     try:
         if obj["type"] == "req":
             out_pkt = {"orig": "man", "type": "dat"}
-
-            out_pkt["clients"] = dict()
-            for compute in computes:
-                out_pkt["clients"][compute] = computes[compute]
+            out_pkt["clients"] = computes
 
             out_pkt["perfs"] = []
-            for num in perfects:
-                out_pkt["perfs"].append(num)
+            for perfect in perfects:
+                out_pkt["perfs"].append(perfect)
+            out_pkt["perfs"].sort()
 
-            sock.send(json.dumps(out_pkt).encode('utf-8'))
+            sock.send((json.dumps(out_pkt)+"\n").encode('utf-8'))
 
         elif obj["type"] == "kill":
+            print("Received kill from report, killing all processes")
             kill_all(compute_mons)
             sys.exit(0)
 
@@ -129,8 +124,11 @@ def kill_all(compute_mons):
 
     while killed < to_kill:
         r, w, x = select([], compute_mons, [])
-        for victim in w:
-            victim.send(json.dump({"orig": "man", "type": "kill"}).encode('utf-8'))
+        for cm in w:
+            try:
+                cm.send((json.dumps({"orig": "man", "type": "kill"})+"\n").encode('utf-8'))
+            except:
+                print("Warning: compute process left unkilled (maybe). Kill manually")
             killed += 1
 
     sys.exit(0)
@@ -147,7 +145,7 @@ def main():
     prfs = set()
 
     cur_val = 1
-    glob_max = 0xFFFF # 16 bit max
+    glob_max = 0xFFFFFFFFFFFFFFFF # 64 bit max
 
     listen_sock = create_socks()
     sock_array = [listen_sock]
@@ -180,9 +178,7 @@ def main():
                 for packet in packets:
                     if not packet:
                         continue
-                    print(packet)
                     obj = json.loads(packet)
-                    print (obj)
                     if obj["orig"] == "cmp":
                         cur_val = handle_compute(obj, packet, sock,
                                         cmps, prfs, cur_val, glob_max)

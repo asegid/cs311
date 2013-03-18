@@ -247,8 +247,7 @@ double calc_perf (void)
 	           (double) (finish.tms_utime - start.tms_utime) / 1000000.0f) /
 	           sysconf(_SC_CLK_TCK);
 
-	//return ((TIME_LOOPS * TIME_LOOPS) / elapsed);
-	return (1500);
+	return ((TIME_LOOPS * TIME_LOOPS) / elapsed);
 }
 
 /* Determine if n is a perfect number */
@@ -302,9 +301,8 @@ void compute_range(int sock_fd, uint64_t min, uint64_t max)
 			perfects[cnt] = i;
 			/* Send packet over connection containing number */
 			sprintf(pkt, "{\"orig\":\"cmp\", \"type\":\"add\", \"val\": %lu}\n", i);
-			printf("\nsending: %s\n", pkt);
 			send(sock_fd, pkt, strlen(pkt), EMPTY_FLAG);
-			printf(" %lu ", (unsigned long)i);
+			printf("Found perfect number: %lu\n", (unsigned long)i);
 			++cnt;
 		}
 	}
@@ -374,13 +372,11 @@ void poll_server(int sock_fd)
 
 	sprintf(req, "{\"orig\": \"cmp\", \"type\": \"req\", \"flops\": %lf}\n", flops);
 	do {
-		printf("\nsending: %s\n", req);
 		if (send(sock_fd, req, strlen(req), EMPTY_FLAG) == -1)
 			perror("send");
 		if ((len = recv(sock_fd, buf, MAX_LINE, EMPTY_FLAG)) == -1)
 			perror("recv");
 
-		printf("\nbuffer: %s\n", buf);
 		buf[len] = '\0';
 		pkt = fill_packet(buf);
 
@@ -388,7 +384,6 @@ void poll_server(int sock_fd)
 		  &&(strcmp(pkt.type, "rng") == 0)) {
 			valid_range_given = (pkt.min >= 0) && (pkt.max > pkt.min);
 			if (valid_range_given) {
-				printf("compute_range: %lu, %lu\n", pkt.min, pkt.max);
 				compute_range (sock_fd, pkt.min, pkt.max);
 			}
 		 }
@@ -398,28 +393,10 @@ void poll_server(int sock_fd)
 /* Run subprograms */
 int main(int argc, char **argv)
 {
-	//double user;
-	//double sys;
-	//struct tms finish;
 	int sock_fd = init_socket(CALC_PORT);
-	//struct tms start;
 
-	printf("Performance (~FLOPS): %g\n", calc_perf());
-
+	forkitor();
 	poll_server(sock_fd);
-
-	/*
-	(void)times(&start);
-	compute_range(1, UINT16_MAX);
-	(void)times(&finish);
-
-	sys = (double) (finish.tms_stime - start.tms_stime) / sysconf(_SC_CLK_TCK);
-	user = (double) (finish.tms_utime - start.tms_utime) / sysconf(_SC_CLK_TCK);
-	printf("Calc time for 1..65535: %gs (user), %gs (sys)\n", user, sys);
-
-	for (int i = 0; i < cnt; ++i)
-		printf(" %lu ", perfects[i]);
-	*/
 
 	return (EXIT_SUCCESS);
 }
