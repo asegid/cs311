@@ -76,7 +76,7 @@
 struct pkt_data {
 	char orig[PKT_FIELD_LEN];
 	char type[PKT_FIELD_LEN];
-	uint64_t min;
+	int64_t min;
 	uint64_t max;
 	double flops;
 };

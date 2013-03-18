@@ -1,0 +1,35 @@
+commit 6fd1583c9cbbf7c3243fc1fb9ace6bf443e6f27f
+Author: Jordan Bayles <jangofett481@gmail.com>
+Date:   Sun Mar 17 23:35:53 2013 -0700
+
+    Bug fixes before final release
+
+commit de509244ca5d00d219c1589dae0815d946beeef4
+Author: Jordan Bayles <jangofett481@gmail.com>
+Date:   Sun Mar 17 14:55:47 2013 -0700
+
+    Done ish!
+
+commit 7d946d67ab4e875c3b3b349aa14235a5f967e1dd
+Author: Jordan Bayles <jangofett481@gmail.com>
+Date:   Sat Mar 16 17:42:52 2013 -0700
+
+    Jsmn, remove it maybe?
+
+commit cae4bb6f98a60a2a200d9c5ddc92295a92925c15
+Author: Jordan Bayles <jangofett481@gmail.com>
+Date:   Thu Mar 14 22:46:04 2013 -0700
+
+    Fix report, init manage
+
+commit ef073a66b7739b44147260cbe9b269b3030dc620
+Author: Jordan Bayles <jangofett481@gmail.com>
+Date:   Thu Mar 14 21:44:25 2013 -0700
+
+    Finish report (-debugging)
+
+commit 9d7a71b9d7883a8d7ac15a72d562227792d09045
+Author: Jordan Bayles <jangofett481@gmail.com>
+Date:   Wed Mar 13 08:29:30 2013 -0700
+
+    Add JSON libs, files for final writeup
