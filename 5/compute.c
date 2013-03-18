@@ -84,11 +84,15 @@ struct pkt_data {
 /** Global variables */
 uint8_t cnt = 0;
 uint64_t perfects[NUM_PERFECT];
+pid_t mon_pid;
 
 /** Functions */
+void sig_handle(int signo);
+void init_sig_handle(void);
+
 int main(int argc,char **argv);
 void poll_server(int sock_fd);
-int forkitor(void);
+void forkitor(void);
 void monitor(void);
 void compute_range(int sock_fd, uint64_t min,uint64_t max);
 bool compute(uint64_t n);
@@ -335,7 +339,7 @@ void monitor(void)
 }
 
 /* Fork monitor */
-int forkitor(void)
+void forkitor(void)
 {
 	int child_pid = -1;
 
@@ -350,10 +354,9 @@ int forkitor(void)
 		break;
 	default:
 		/* Parent case */
+		mon_pid = child_pid;
 		break;
 	}
-
-	return (child_pid);
 }
 
 /* Handle server I/O for number computation */
@@ -390,11 +393,31 @@ void poll_server(int sock_fd)
 	} while (valid_range_given);
 }
 
+void sig_handle(int signo)
+{
+	kill(mon_pid, signo);
+	wait(NULL);
+	exit(EXIT_FAILURE);
+}
+
+void init_sig_handle(void)
+{
+	struct sigaction handler;
+
+	handler.sa_handler = sig_handle;
+	handler.sa_flags = 0;
+	sigemptyset(&(handler.sa_mask));
+	sigaction(SIGHUP, &handler, NULL);
+	sigaction(SIGINT, &handler, NULL);
+	sigaction(SIGQUIT, &handler, NULL);
+}
+
 /* Run subprograms */
 int main(int argc, char **argv)
 {
 	int sock_fd = init_socket(CALC_PORT);
 
+	init_sig_handle();
 	forkitor();
 	poll_server(sock_fd);
 

@@ -1,62 +1,35 @@
-Date:   Tue Mar 5 22:33:43 2013 -0800
+commit 6fd1583c9cbbf7c3243fc1fb9ace6bf443e6f27f
+Author: Jordan Bayles <jangofett481@gmail.com>
+Date:   Sun Mar 17 23:35:53 2013 -0700
 
+    Bug fixes before final release
 
-Date:   Tue Mar 5 22:03:32 2013 -0800
+commit de509244ca5d00d219c1589dae0815d946beeef4
+Author: Jordan Bayles <jangofett481@gmail.com>
+Date:   Sun Mar 17 14:55:47 2013 -0700
 
-    Fixing semaphores
+    Done ish!
 
-Date:   Sun Mar 3 02:55:17 2013 -0800
+commit 7d946d67ab4e875c3b3b349aa14235a5f967e1dd
+Author: Jordan Bayles <jangofett481@gmail.com>
+Date:   Sat Mar 16 17:42:52 2013 -0700
 
-    Processes basically working (-races)
+    Jsmn, remove it maybe?
 
-Date:   Sat Mar 2 20:59:07 2013 -0800
+commit cae4bb6f98a60a2a200d9c5ddc92295a92925c15
+Author: Jordan Bayles <jangofett481@gmail.com>
+Date:   Thu Mar 14 22:46:04 2013 -0700
 
-    Threading...
+    Fix report, init manage
 
-Date:   Sat Mar 2 19:37:20 2013 -0800
+commit ef073a66b7739b44147260cbe9b269b3030dc620
+Author: Jordan Bayles <jangofett481@gmail.com>
+Date:   Thu Mar 14 21:44:25 2013 -0700
 
-    Threading doneish
+    Finish report (-debugging)
 
-Date:   Sat Mar 2 15:19:26 2013 -0800
+commit 9d7a71b9d7883a8d7ac15a72d562227792d09045
+Author: Jordan Bayles <jangofett481@gmail.com>
+Date:   Wed Mar 13 08:29:30 2013 -0700
 
-    Added happy code, just need to freakin' threadit
-
-Date:   Fri Mar 1 23:23:18 2013 -0800
-
-    Happy time!
-
-Date:   Fri Mar 1 22:54:21 2013 -0800
-
-    Segmented code for threading
-
-Date:   Fri Mar 1 22:31:10 2013 -0800
-
-    Basic sieve completely solid, ready to add crap
-
-Date:   Fri Mar 1 21:37:42 2013 -0800
-
-    Recompiled using gcc instead of icc for debug syms
-
-Date:   Fri Mar 1 21:04:03 2013 -0800
-
-    Optimizations for basic sieving
-
-Date:   Wed Feb 27 11:44:12 2013 -0800
-
-    Debugging sieve, old version MUCH faster...
-
-Date:   Wed Feb 27 11:15:25 2013 -0800
-
-    Move files not needed for turnin
-
-Date:   Mon Feb 25 17:09:21 2013 -0800
-
-    Getting ready to add threading and forking
-
-Date:   Sat Feb 23 16:36:20 2013 -0800
-
-    Basic sieve working
-
-Date:   Fri Feb 22 19:22:19 2013 -0800
-
-    ASSIGNMENT 4: Design sketch complete
+    Add JSON libs, files for final writeup
