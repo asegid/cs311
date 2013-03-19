@@ -14,9 +14,11 @@
 \usepackage{geometry}
 \geometry{textheight=10in, textwidth=7.5in}
 
-\usepackage{hyperref}
+\PassOptionsToPackage{hyphens}{url}\usepackage{hyperref}
 
 \def\name{Jordan Bayles (baylesj)}
+\author{\name}
+\title{CS 311 Final Exam: Windows/POSIX API Discussion}
 
 %pull in the necessary preamble matter for pygments output
 \input{pygments.tex}
@@ -35,8 +37,80 @@
 \parindent = 0.0 in
 \parskip = 0.2 in
 
+% Compare and contrast the Windows and POSIX APIs. Include code is optional
 \begin{document}
-\cite{test}
+\maketitle
+
+\section{File Input and Output (I/O)}
+The POSIX concept of standard input, output and error file descriptors is roughly
+mirrored in Windows: upon program initialization, startup code initializes
+\verb!stdin!, \verb!stdout!, and \verb!stderr! streams, which are directed to
+console keyboard and screen by default.\cite{unixamg}
+
+The standard I/O library (\verb!stdio.h!) providing system calls is part of
+ANSI C, so is available on both UNIX and Windows systems. Therefore file I/O
+can be done similarly on both systems. The UNIX Concept of universality of I/O
+is somewhat matched in the windows library, as \verb~CreateFile~ and other
+functions can be used for many file and I/O devices, such as files, file streams,
+directories, physical disks, volumes, console buffers, tape drives, pipes, etc.
+\cite{fmfw}
+
+Part of the reason why file operation are similar between the two APIs is that
+some of windows features are based on the paradigm popularized by BSD UNIX, such
+as Windows Sockets (Winsock).
+
+\section{Threading}
+On a abstracted level, thread implementations in the POSIX and Windows APIs
+are very similar in nature. Most functions have a 1 to 1 mapping between
+the APIs, to the point where posix-like threading has been implemented previously
+in windows\footnote{pthreads-win32, available at \url{www.sourceware.org/pthreads-win32/}}.
+
+Although the functionality both APIs expose is similar in nature, the underlying
+structure and design principles are extremely different. For example, in Windows,
+processes are a container unit for threads (the basic execution unit). In POSIX<
+threads are merely a special case of processes, the basic unit. These design
+considerations are reflected in their implementations, as threading code
+in windows is in-kernel (meaning that thread functions are in themselves system
+calls) but a system library (\verb!pthreads.h!) that handles the system call usage
+in POSIX systems.\cite{pvsthreads}
+
+Some similarities between the two APIs include (1) a required entry point for each
+thread, (2) each thread must be passed a single parameter, (3) the thread function
+must return a single value, and (4) local parameters are preferred due to the
+requirement of synchronization methods to access global variables (since these
+are shared between threads in a single process).
+
+Major differences between the APIs include (1) threads in Win32 cannot return
+strings, (2) Win32 threads return DWORD values, (3) Win32 does not support
+deferred termination, due to the fact that a \verb!TerminateThread! call
+can occur at any point in the code, is not immediate, and is not predictable.
+UNIX threads terminate when a safe cancellation point is reached, and thus
+deferred termination is more predictable.
+\section{Mutual Exclusion and Synchronization}
+Why did the multithreaded chicken cross the road?\\
+to To other side. get the
+
+Both POSIX and Win32 threads suffer from the issue of resource access not being
+guaranteed atomic, and solve this problem in a similar fashion. In comparison
+to the sychronization primitives (semaphores, mutexes, and conditional variables)
+utilized in POSIX, Win32 threads use a set of synchronization objects in order
+to control resource
+access. These include (1) events, (2) semaphores, (3) mutexes, and (4) critical
+sections. Although both APIs included the use of semaphores and mutexes, signals
+in Win32 are handled very differently than the condition variables utilized by
+the pthreads library. In POSIX, signals are either caught by waiting threads or
+just discarded (although code can be structured to ensure the signals are not lost),
+versus events in Win32, which remain signaled once in the signaled state. \cite{pvsthreads}
+
+One of the most notable differences in synchronization between win32 and
+pthreads is the addition of the \emph{critical section object} in the win32
+API. The critical section is similar in principle to mutexes, however it
+can not be shared between multiple processes and is more efficient than win32
+mutexes. The \verb!EnterCriticalSection!, \verb!TryEnterCriticalSection!, and
+\verb!LeaveCriticalSection! functions are utilized with the \verb!CRITICAL_SECTION!
+variable type in order to manage critical sections of code. \cite{msthreads}
+
+%\section{Sockets}
 
 \bibliographystyle{plain}
 \bibliography{biblio.bib}
